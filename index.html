@@ -485,25 +485,18 @@ async function fetchLastPlayedApi(uuid) {
 }
 
 // Background fetch — runs once on first page load, updates lastPlayedMemory
-// as each player's data arrives, re-rendering each time
+// as each player's data arrives, rebuilding mergedData each time
 async function populateLastPlayedFromApi(players) {
   if (lastPlayedFetched) return;
   lastPlayedFetched = true;
   for (const u of players) {
     const ts = await fetchLastPlayedApi(u.uuid);
-    if (ts != null) {
-      // Only update if fresher than what we already have
-      if (!lastPlayedMemory[u.uuid] || ts > lastPlayedMemory[u.uuid]) {
-        lastPlayedMemory[u.uuid] = ts;
-        // Re-render just this player's last played cell without full re-render
-        const row = document.querySelector(`tr[data-uuid="${u.uuid}"]`);
-        if (row) {
-          const cell = row.querySelector('.last-played-cell');
-          if (cell) cell.textContent = fmtAgo(ts);
-        }
-      }
+    if (ts != null && (!lastPlayedMemory[u.uuid] || ts > lastPlayedMemory[u.uuid])) {
+      lastPlayedMemory[u.uuid] = ts;
+      buildMerged();
+      renderTable();
     }
-    await new Promise(r => setTimeout(r, 80)); // 80ms between requests
+    await new Promise(r => setTimeout(r, 80));
   }
 }
 
