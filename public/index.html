@@ -458,6 +458,16 @@ let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
 
+// localStorage key for last-played cache: { uuid: { lastPlayed: unixSec, eloRate: number } }
+const LS_KEY = 'mcsr_s10_lastplayed';
+function loadCache() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { return {}; }
+}
+function saveCache(c) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(c)); } catch {}
+}
+let lpCache = loadCache();
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const flag = c => c ? [...c.toUpperCase()].map(ch => String.fromCodePoint(0x1F1E6+ch.charCodeAt(0)-65)).join('') : '';
@@ -633,7 +643,7 @@ function buildMerged() {
       currentPP, predPP, gain,
       ppRk,
       qualData,
-      lastPlayed: serverLastPlayed[u.uuid] ?? null,
+      lastPlayed: lpCache[u.uuid]?.lastPlayed ?? null,
       _isZeroPP: u._isZeroPP ?? false,
     };
   });
@@ -662,6 +672,51 @@ function fmtAgo(unixSec) {
   return `${Math.floor(diff/86400/7)}w ago`;
 }
 
+// Fetch last-played for a single player (called once per player on first load)
+async function fetchLastPlayed(uuid) {
+  try {
+    const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
+    const j = await r.json();
+    if (j.status === 'success' && j.data?.length) return j.data[0].date;
+  } catch {}
+  return null;
+}
+
+// Initial population: fetch last-played for all players not yet in cache
+// Rate-limited to one request per 80ms to avoid hammering API
+async function populateLastPlayed(players) {
+  const missing = players.filter(u => !lpCache[u.uuid]);
+  if (!missing.length) return;
+  for (const u of missing) {
+    const ts = await fetchLastPlayed(u.uuid);
+    lpCache[u.uuid] = { lastPlayed: ts, eloRate: u.eloRate };
+    saveCache(lpCache);
+    await new Promise(r => setTimeout(r, 80));
+  }
+  renderTable(); // re-render once all populated
+}
+
+// On each 60s refresh: detect Elo changes that aren't -5 decay
+function updateLastPlayedFromElo(players) {
+  const now = Math.floor(Date.now() / 1000);
+  let changed = false;
+  for (const u of players) {
+    const cached = lpCache[u.uuid];
+    if (!cached) continue;
+    const diff = u.eloRate - cached.eloRate;
+    if (diff !== 0 && diff !== -5) {
+      lpCache[u.uuid] = { lastPlayed: now, eloRate: u.eloRate };
+      changed = true;
+    } else if (cached.eloRate !== u.eloRate) {
+      // Decay — just update stored eloRate, don't touch lastPlayed
+      lpCache[u.uuid] = { ...cached, eloRate: u.eloRate };
+      changed = true;
+    }
+  }
+  if (changed) saveCache(lpCache);
+}
+
+
 async function fetchAll(spin=true) {
   const btn = document.getElementById('btn-refresh');
   if (spin) btn.classList.add('spinning');
@@ -679,15 +734,25 @@ async function fetchAll(spin=true) {
     }
     if (ej.status === 'success') rawElo = ej.data.users || [];
 
+    // All players across both APIs
+    const allPlayers = [...rawPhase, ...rawElo.filter(u => !rawPhase.find(p => p.uuid === u.uuid))];
+
+    // On refresh: detect Elo changes to update lastPlayed
+    if (Object.keys(lpCache).length > 0) updateLastPlayedFromElo(allPlayers);
+
     buildMerged();
     recordHistorySnapshot();
-    loadServerHistory(); // async, non-blocking — re-renders when done
+    // Refresh server history and rebuild tsHistory
+    await loadServerHistory();
+    tsHistory = buildTsHistory();
     document.getElementById('player-count').textContent = `${mergedData.length} players`;
     if (phaseEndsAt)
       document.getElementById('phase-countdown').innerHTML = fmtCountdown(phaseEndsAt);
     document.getElementById('last-updated').textContent =
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
+    // Populate last-played in background (re-renders when done)
+    populateLastPlayed(allPlayers);
   } catch(e) {
     console.error(e);
     document.getElementById('last-updated').textContent = 'error';
@@ -859,60 +924,42 @@ setInterval(() => {
     document.getElementById('phase-countdown').innerHTML = fmtCountdown(phaseEndsAt);
 }, 30_000);
 
-// ── Server-side history (Supabase) ────────────────────────────────────────
-// Fill these in after creating your Supabase project
-const SUPABASE_URL     = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-
+// ── Time-series tracking (localStorage) ──────────────────────────────────
+// ── Server-side history (fetched from /api/history) ──────────────────────
+// Format: array of { t, players: [{uuid, name, eloRate, ppRk, qualType, qualGap, predPP}] }
 let serverSnapshots = [];
-let tsHistory = {};
 
 async function loadServerHistory() {
   try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/snapshots?select=captured_at,players&order=captured_at.asc`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    const rows = await r.json();
-    if (Array.isArray(rows)) {
-      serverSnapshots = rows.map(row => ({
-        t: Math.floor(new Date(row.captured_at).getTime() / 1000),
-        players: row.players,
-      }));
-      tsHistory = buildTsHistory();
-      serverLastPlayed = buildServerLastPlayed();
-      buildMerged();
-      renderTable();
-    }
+    const r = await fetch('/api/history');
+    const j = await r.json();
+    if (j.ok) serverSnapshots = j.snapshots ?? [];
   } catch(e) { console.warn('history fetch failed', e); }
 }
 
-// serverLastPlayed: uuid → unix timestamp, populated from latest snapshot
-let serverLastPlayed = {};
-
+// Build per-uuid history from server snapshots (same shape as old tsHistory)
 function buildTsHistory() {
   const out = {};
   for (const snap of serverSnapshots) {
     for (const p of (snap.players ?? [])) {
       if (!out[p.uuid]) out[p.uuid] = [];
-      out[p.uuid].push({ t: snap.t, eloRate: p.eloRate, ppRk: p.ppRk, qualGap: p.qualGap, qualType: p.qualType });
+      out[p.uuid].push({
+        t: snap.t,
+        eloRate: p.eloRate,
+        ppRk: p.ppRk,
+        qualGap: p.qualGap,
+        qualType: p.qualType,
+      });
     }
   }
   return out;
 }
 
-function buildServerLastPlayed() {
-  // Use the most recent snapshot's lastPlayed values
-  if (!serverSnapshots.length) return {};
-  const latest = serverSnapshots[serverSnapshots.length - 1];
-  const out = {};
-  for (const p of (latest.players ?? [])) {
-    if (p.lastPlayed) out[p.uuid] = p.lastPlayed;
-  }
-  return out;
-}
+// tsHistory is rebuilt from server data after each history fetch
+let tsHistory = {};
 
-function recordHistorySnapshot() {} // no-op — handled server-side by GitHub Action
+// recordHistorySnapshot is now a no-op — the cron job handles recording
+function recordHistorySnapshot() {}
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 let modalChart = null;

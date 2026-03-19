@@ -9,8 +9,19 @@ const PP_TABLE = [
   5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
 ];
 const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1] : 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function fetchLastPlayed(uuid) {
+  try {
+    const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
+    const j = await r.json();
+    if (j.status === 'success' && j.data?.length) return j.data[0].date;
+  } catch {}
+  return null;
+}
 
 async function main() {
+  // ── Fetch leaderboards ──────────────────────────────────────────────────
   const [phaseRes, eloRes] = await Promise.all([
     fetch('https://api.mcsrranked.com/phase-leaderboard?predicted=true'),
     fetch('https://api.mcsrranked.com/leaderboard'),
@@ -43,7 +54,6 @@ async function main() {
     if (!boundary) return null;
     const bCurrentPP = boundary.seasonResult?.phasePoint ?? 0;
     const bEloRk     = eloMap[boundary.uuid]?.eloRank ?? boundary.eloRank ?? targetPosition;
-
     for (let r = eloRk; r >= 1; r--) {
       const myNew = currentPP + p3Points(r);
       let bNewEloRk = bEloRk;
@@ -56,24 +66,68 @@ async function main() {
     return null;
   }
 
+  // ── Load previous snapshot to reuse lastPlayed where Elo hasn't changed ─
+  const { data: prevRows } = await supabase
+    .from('snapshots')
+    .select('players')
+    .order('captured_at', { ascending: false })
+    .limit(1);
+
+  const prevPlayers = prevRows?.[0]?.players ?? [];
+  const prevMap = {};
+  for (const p of prevPlayers) prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
+
+  // Build full player uuid list
+  const phaseUuids = new Set(rawPhase.map(u => u.uuid));
+  const allUuids = [
+    ...sorted.map(u => u.uuid),
+    ...rawElo.filter(u => !phaseUuids.has(u.uuid)).map(u => u.uuid),
+  ];
+
+  // Only re-fetch lastPlayed if: never seen before, or Elo changed by != -5
+  const needsFetch = new Set();
+  for (const uuid of allUuids) {
+    const prev = prevMap[uuid];
+    const currElo = eloMap[uuid]?.eloRate ?? 0;
+    if (!prev || prev.lastPlayed === null) { needsFetch.add(uuid); continue; }
+    const diff = currElo - prev.eloRate;
+    if (diff !== 0 && diff !== -5) needsFetch.add(uuid);
+  }
+
+  console.log(`Fetching lastPlayed for ${needsFetch.size} players, reusing ${allUuids.length - needsFetch.size} from cache`);
+
+  // Build lastPlayed map — reuse cache first, then fetch missing
+  const lastPlayedMap = {};
+  for (const uuid of allUuids) {
+    if (!needsFetch.has(uuid)) lastPlayedMap[uuid] = prevMap[uuid]?.lastPlayed ?? null;
+  }
+  for (const uuid of needsFetch) {
+    lastPlayedMap[uuid] = await fetchLastPlayed(uuid);
+    await sleep(80);
+  }
+
+  // ── Build snapshot ──────────────────────────────────────────────────────
   const players = sorted.map((u, idx) => {
-    const eloRate   = eloMap[u.uuid]?.eloRate  ?? u.eloRate  ?? 0;
-    const eloRk     = eloMap[u.uuid]?.eloRank  ?? u.eloRank  ?? 0;
+    const eloRate   = eloMap[u.uuid]?.eloRate ?? u.eloRate ?? 0;
+    const eloRk     = eloMap[u.uuid]?.eloRank ?? u.eloRank ?? 0;
     const currentPP = u.seasonResult?.phasePoint ?? 0;
     const predPP    = u.predPhasePoint;
     const ppRk      = idx + 1;
 
     let qualType, qualGap;
-    if (ppRk === 1)                              { qualType = 'top';       qualGap = 0; }
-    else if (ppRk <= 12)                         { qualType = 'seed';      qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, ppRk - 1); }
-    else if (lcqPP !== null && predPP >= lcqPP)  { qualType = 'lcq_to_po'; qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, 12); }
-    else                                         { qualType = 'lcq';       qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, 100); }
+    if (ppRk === 1)                             { qualType = 'top';       qualGap = 0; }
+    else if (ppRk <= 12)                        { qualType = 'seed';      qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, ppRk - 1); }
+    else if (lcqPP !== null && predPP >= lcqPP) { qualType = 'lcq_to_po'; qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, 12); }
+    else                                        { qualType = 'lcq';       qualGap = simulateQual(u.uuid, currentPP, eloRate, eloRk, 100); }
 
-    return { uuid: u.uuid, name: u.nickname, country: u.country ?? null, eloRate, eloRk, predPP, currentPP, ppRk, qualType, qualGap };
+    return {
+      uuid: u.uuid, name: u.nickname, country: u.country ?? null,
+      eloRate, eloRk, predPP, currentPP, ppRk, qualType, qualGap,
+      lastPlayed: lastPlayedMap[u.uuid] ?? null,
+    };
   });
 
-  // Add zero-PP players from elo leaderboard
-  const phaseUuids = new Set(rawPhase.map(u => u.uuid));
+  // Zero-PP players from elo leaderboard
   for (const u of rawElo) {
     if (phaseUuids.has(u.uuid)) continue;
     const eloRate   = u.eloRate ?? 0;
@@ -84,23 +138,22 @@ async function main() {
       eloRate, eloRk, predPP: 0, currentPP,
       ppRk: sorted.length + 1, qualType: 'lcq',
       qualGap: simulateQual(u.uuid, currentPP, eloRate, eloRk, 100),
+      lastPlayed: lastPlayedMap[u.uuid] ?? null,
     });
   }
 
+  // ── Save snapshot ───────────────────────────────────────────────────────
   const { error } = await supabase.from('snapshots').insert({
     captured_at: new Date().toISOString(),
     players,
   });
 
   if (error) throw new Error(`Supabase insert failed: ${error.message}`);
-  console.log(`Snapshot saved — ${players.length} players at ${new Date().toISOString()}`);
+  console.log(`Saved ${players.length} players at ${new Date().toISOString()}`);
 
-  // Prune old snapshots — keep last 2000
+  // Prune — keep last 2000 snapshots
   const { data: oldest } = await supabase
-    .from('snapshots')
-    .select('id')
-    .order('captured_at', { ascending: true });
-
+    .from('snapshots').select('id').order('captured_at', { ascending: true });
   if (oldest && oldest.length > 2000) {
     const toDelete = oldest.slice(0, oldest.length - 2000).map(r => r.id);
     await supabase.from('snapshots').delete().in('id', toDelete);
