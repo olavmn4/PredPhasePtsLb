@@ -458,31 +458,53 @@ let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
 
-// In-memory last-played tracking — no localStorage, no API calls
-// Populated from Supabase snapshot on load, then updated in-memory every 60s
-// prevEloSnapshot: uuid → eloRate from the previous refresh cycle
-let prevEloSnapshot = {};   // for detecting games
-let lastPlayedMemory = {};  // uuid → unix timestamp
+// In-memory last-played tracking
+let prevEloSnapshot  = {};  // uuid → eloRate, for detecting games every 60s
+let lastPlayedMemory = {};  // uuid → unix timestamp (best known value)
+let lastPlayedFetched = false; // only run the API fetch once per page load
 
 function detectGamesFromElo(allPlayers) {
   const now = Math.floor(Date.now() / 1000);
-  let any = false;
   for (const u of allPlayers) {
     const prevElo = prevEloSnapshot[u.uuid];
-    if (prevElo == null) {
-      // First time seeing this player — just record their Elo, don't update lastPlayed
-      prevEloSnapshot[u.uuid] = u.eloRate;
-      continue;
-    }
+    if (prevElo == null) { prevEloSnapshot[u.uuid] = u.eloRate; continue; }
     const diff = (u.eloRate ?? 0) - prevElo;
-    if (diff !== 0 && diff !== -5) {
-      // Elo changed by something other than decay — they played
-      lastPlayedMemory[u.uuid] = now;
-      any = true;
-    }
+    if (diff !== 0 && diff !== -5) lastPlayedMemory[u.uuid] = now;
     prevEloSnapshot[u.uuid] = u.eloRate;
   }
-  return any;
+}
+
+// Fetch last match date for a single player from MCSR API
+async function fetchLastPlayedApi(uuid) {
+  try {
+    const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
+    const j = await r.json();
+    if (j.status === 'success' && j.data?.length) return j.data[0].date;
+  } catch {}
+  return null;
+}
+
+// Background fetch — runs once on first page load, updates lastPlayedMemory
+// as each player's data arrives, re-rendering each time
+async function populateLastPlayedFromApi(players) {
+  if (lastPlayedFetched) return;
+  lastPlayedFetched = true;
+  for (const u of players) {
+    const ts = await fetchLastPlayedApi(u.uuid);
+    if (ts != null) {
+      // Only update if fresher than what we already have
+      if (!lastPlayedMemory[u.uuid] || ts > lastPlayedMemory[u.uuid]) {
+        lastPlayedMemory[u.uuid] = ts;
+        // Re-render just this player's last played cell without full re-render
+        const row = document.querySelector(`tr[data-uuid="${u.uuid}"]`);
+        if (row) {
+          const cell = row.querySelector('.last-played-cell');
+          if (cell) cell.textContent = fmtAgo(ts);
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, 80)); // 80ms between requests
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -719,6 +741,8 @@ async function fetchAll(spin=true) {
     document.getElementById('last-updated').textContent =
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
+    // Background: fetch fresh last-played from MCSR API once per page load
+    populateLastPlayedFromApi(allPlayers);
   } catch(e) {
     console.error(e);
     document.getElementById('last-updated').textContent = 'error';
@@ -804,7 +828,7 @@ function renderTable() {
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
       <td><div class="pp-bar-bg"><div class="pp-bar-fill" style="width:${pct}%"></div></div></td>
       <td>${qualPill(u.qualData)}</td>
-      <td class="num"><span class="mono" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
+      <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
     </tr>`;
 
     // Insert banners AFTER the current row
