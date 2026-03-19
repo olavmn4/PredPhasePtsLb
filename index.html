@@ -702,7 +702,8 @@ function updateLastPlayedFromElo(players) {
   let changed = false;
   for (const u of players) {
     const cached = lpCache[u.uuid];
-    if (!cached) continue;
+    // Skip if no cached eloRate — means it was populated before the API fetch completed
+    if (!cached || cached.eloRate == null) continue;
     const diff = u.eloRate - cached.eloRate;
     if (diff !== 0 && diff !== -5) {
       lpCache[u.uuid] = { lastPlayed: now, eloRate: u.eloRate };
@@ -714,6 +715,20 @@ function updateLastPlayedFromElo(players) {
     }
   }
   if (changed) saveCache(lpCache);
+}
+
+// Clear any bad cache entries where lastPlayed was incorrectly set to now
+// (detectable because eloRate is missing — these were written before the API fetch)
+function sanitizeCache(players) {
+  let dirty = false;
+  for (const u of players) {
+    const cached = lpCache[u.uuid];
+    if (cached && cached.eloRate == null) {
+      delete lpCache[u.uuid];
+      dirty = true;
+    }
+  }
+  if (dirty) saveCache(lpCache);
 }
 
 
@@ -742,14 +757,14 @@ async function fetchAll(spin=true) {
 
     buildMerged();
     recordHistorySnapshot();
-    loadServerHistory(); // async, non-blocking
     document.getElementById('player-count').textContent = `${mergedData.length} players`;
     if (phaseEndsAt)
       document.getElementById('phase-countdown').innerHTML = fmtCountdown(phaseEndsAt);
     document.getElementById('last-updated').textContent =
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
-    // Populate last-played in background (re-renders when done)
+    // Clear any bad cache entries, then populate missing ones from API
+    sanitizeCache(allPlayers);
     populateLastPlayed(allPlayers);
   } catch(e) {
     console.error(e);
@@ -922,43 +937,46 @@ setInterval(() => {
     document.getElementById('phase-countdown').innerHTML = fmtCountdown(phaseEndsAt);
 }, 30_000);
 
-// ── Server-side history (Supabase) ────────────────────────────────────────
-// Fill these in after creating your Supabase project
-const SUPABASE_URL     = 'https://sjolzauhagjnuupectfs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqb2x6YXVoYWdqbnV1cGVjdGZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NTc2MzAsImV4cCI6MjA4OTMzMzYzMH0.nDg1UAW2tOcrH-UaPK1H86iLoHECUEoM0gNM6n9s_eg';
-
-let serverSnapshots = [];
-let tsHistory = {};
-
-async function loadServerHistory() {
-  try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/snapshots?select=captured_at,players&order=captured_at.asc`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    const rows = await r.json();
-    if (Array.isArray(rows)) {
-      serverSnapshots = rows.map(row => ({
-        t: Math.floor(new Date(row.captured_at).getTime() / 1000),
-        players: row.players,
-      }));
-      tsHistory = buildTsHistory();
-    }
-  } catch(e) { console.warn('history fetch failed', e); }
+// ── Time-series tracking (localStorage) ──────────────────────────────────
+// Stored as: mcsr_s10_history → { uuid: [ { t, eloRate, ppRk, qualGap, qualType }, ... ] }
+// qualType: 'po' | 'lcq' | 'top' — which threshold the gap is measured against
+const LS_HISTORY = 'mcsr_s10_history';
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(LS_HISTORY) || '{}'); } catch { return {}; }
 }
+function saveHistory(h) {
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify(h)); } catch {}
+}
+let tsHistory = loadHistory();
 
-function buildTsHistory() {
-  const out = {};
-  for (const snap of serverSnapshots) {
-    for (const p of (snap.players ?? [])) {
-      if (!out[p.uuid]) out[p.uuid] = [];
-      out[p.uuid].push({ t: snap.t, eloRate: p.eloRate, ppRk: p.ppRk, qualGap: p.qualGap, qualType: p.qualType });
+// Called on every refresh — appends one data point per player
+function recordHistorySnapshot() {
+  const now = Math.floor(Date.now() / 1000);
+  const phasePlayers = mergedData.filter(u => !u._isZeroPP);
+  const playoffsPP = phasePlayers[11]?.predPP ?? null;
+  const lcqPP      = phasePlayers[99]?.predPP ?? null;
+
+  for (const u of mergedData) {
+    if (!tsHistory[u.uuid]) tsHistory[u.uuid] = [];
+    const hist = tsHistory[u.uuid];
+
+    // Determine qual type and gap for this player right now
+    let qualType, qualGap;
+    if (u.qualData?.type === 'top') { qualType = 'top'; qualGap = 0; }
+    else if (u.ppRk <= 12)          { qualType = 'po';  qualGap = u.qualData?.gap ?? null; }
+    else if (playoffsPP !== null && u.predPP >= (lcqPP ?? 0)) { qualType = 'lcq_to_po'; qualGap = u.qualData?.gap ?? null; }
+    else                             { qualType = 'lcq'; qualGap = u.qualData?.gap ?? null; }
+
+    // Only append if something changed (avoid duplicates on same refresh)
+    const last = hist[hist.length - 1];
+    if (!last || last.eloRate !== u.eloRate || last.ppRk !== u.ppRk || last.qualGap !== qualGap) {
+      hist.push({ t: now, eloRate: u.eloRate, ppRk: u.ppRk, qualGap, qualType });
+      // Cap at 2000 points per player to avoid blowing up localStorage
+      if (hist.length > 2000) hist.splice(0, hist.length - 2000);
     }
   }
-  return out;
+  saveHistory(tsHistory);
 }
-
-function recordHistorySnapshot() {} // no-op — handled server-side by GitHub Action
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 let modalChart = null;
