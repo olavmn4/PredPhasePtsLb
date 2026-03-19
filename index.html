@@ -458,6 +458,33 @@ let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
 
+// In-memory last-played tracking — no localStorage, no API calls
+// Populated from Supabase snapshot on load, then updated in-memory every 60s
+// prevEloSnapshot: uuid → eloRate from the previous refresh cycle
+let prevEloSnapshot = {};   // for detecting games
+let lastPlayedMemory = {};  // uuid → unix timestamp
+
+function detectGamesFromElo(allPlayers) {
+  const now = Math.floor(Date.now() / 1000);
+  let any = false;
+  for (const u of allPlayers) {
+    const prevElo = prevEloSnapshot[u.uuid];
+    if (prevElo == null) {
+      // First time seeing this player — just record their Elo, don't update lastPlayed
+      prevEloSnapshot[u.uuid] = u.eloRate;
+      continue;
+    }
+    const diff = (u.eloRate ?? 0) - prevElo;
+    if (diff !== 0 && diff !== -5) {
+      // Elo changed by something other than decay — they played
+      lastPlayedMemory[u.uuid] = now;
+      any = true;
+    }
+    prevEloSnapshot[u.uuid] = u.eloRate;
+  }
+  return any;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const flag = c => c ? [...c.toUpperCase()].map(ch => String.fromCodePoint(0x1F1E6+ch.charCodeAt(0)-65)).join('') : '';
@@ -633,7 +660,7 @@ function buildMerged() {
       currentPP, predPP, gain,
       ppRk,
       qualData,
-      lastPlayed: serverLastPlayed[u.uuid] ?? null,
+      lastPlayed: lastPlayedMemory[u.uuid] ?? null,
       _isZeroPP: u._isZeroPP ?? false,
     };
   });
@@ -678,6 +705,10 @@ async function fetchAll(spin=true) {
       phaseEndsAt = pj.data.phase?.endsAt ?? null;
     }
     if (ej.status === 'success') rawElo = ej.data.users || [];
+
+    // Detect games from Elo changes since last refresh
+    const allPlayers = [...rawPhase, ...rawElo.filter(u => !rawPhase.find(p => p.uuid === u.uuid))];
+    detectGamesFromElo(allPlayers);
 
     buildMerged();
     recordHistorySnapshot();
@@ -907,7 +938,13 @@ function buildServerLastPlayed() {
   const latest = serverSnapshots[serverSnapshots.length - 1];
   const out = {};
   for (const p of (latest.players ?? [])) {
-    if (p.lastPlayed) out[p.uuid] = p.lastPlayed;
+    if (p.lastPlayed) {
+      out[p.uuid] = p.lastPlayed;
+      // Seed lastPlayedMemory from server if we don't have a more recent in-memory value
+      if (!lastPlayedMemory[p.uuid] || p.lastPlayed > lastPlayedMemory[p.uuid]) {
+        lastPlayedMemory[p.uuid] = p.lastPlayed;
+      }
+    }
   }
   return out;
 }
