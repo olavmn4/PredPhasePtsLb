@@ -287,6 +287,7 @@
         <thead>
           <tr>
             <th data-col="ppRank" class="sorted num">#<span class="sort-icon">↑</span></th>
+            <th data-col="phaseMove" class="num">phase Δ<span class="sort-icon">↕</span></th>
             <th data-col="name">player</th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
@@ -679,9 +680,32 @@ function buildMerged() {
       _isZeroPP: u._isZeroPP ?? false,
     };
   });
+
+  // ── Phase movement: compare pred PP rank vs pre-phase rank ───────────────
+  // Pre-phase rank = rank based on currentPP alone (what they had before phase 3)
+  // Sort by currentPP desc, eloRate desc as tiebreak (same tiebreak as main rank)
+  const preSorted = [...mergedData]
+    .filter(u => !u._isZeroPP)
+    .sort((a, b) => b.currentPP - a.currentPP || b.eloRate - a.eloRate);
+
+  const preRankMap = {};
+  preSorted.forEach((u, i) => { preRankMap[u.uuid] = i + 1; });
+
+  mergedData.forEach(u => {
+    if (u._isZeroPP) { u.phaseMove = null; return; }
+    const preRank = preRankMap[u.uuid] ?? u.ppRk;
+    u.phaseMove = preRank - u.ppRk; // positive = moved up, negative = moved down
+  });
 }
 
-function qualPill(q) {
+function phaseMoveCell(v) {
+  if (v == null) return '<span style="color:var(--muted);font-family:\'IBM Plex Mono\',monospace;font-size:11px">—</span>';
+  if (v === 0)   return '<span style="color:var(--muted);font-family:\'IBM Plex Mono\',monospace;font-size:11px">—</span>';
+  if (v > 0)     return `<span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500">▲${v}</span>`;
+  return `<span style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500">▼${Math.abs(v)}</span>`;
+}
+
+
   if (!q) return '';
   if (q.type === 'top') return `<span class="qual-top">—</span>`;
   const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:'↑ seed' };
@@ -768,7 +792,8 @@ function getRows() {
     else if (col==='cur')     { va=a.currentPP;  vb=b.currentPP; }
     else if (col==='gain')    { va=a.gain;        vb=b.gain; }
     else if (col==='elo')     { va=a.eloRate;     vb=b.eloRate; }
-    else if (col==='eloRank') { va=a.eloRk;       vb=b.eloRk; }
+    else if (col==='eloRank')   { va=a.eloRk;        vb=b.eloRk; }
+    else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
     if (va < vb) return asc ? -1 : 1;
     if (va > vb) return asc ? 1 : -1;
@@ -806,6 +831,7 @@ function renderTable() {
 
     html += `<tr data-uuid="${u.uuid}">
       <td class="num"><span class="rank-num ${rankCls(idx+1)}">${idx+1}</span></td>
+      <td class="num">${phaseMoveCell(u.phaseMove)}</td>
       <td>
         <div class="player-cell">
           <img class="avatar" src="${avatarUrl(u.uuid)}" alt="" loading="lazy" onerror="this.style.display='none'">
@@ -831,7 +857,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="10">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="11">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -839,7 +865,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="10">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="11">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
