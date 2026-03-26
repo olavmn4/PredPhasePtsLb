@@ -2,8 +2,5 @@
   "name": "mcsr-ranked",
   "version": "1.0.0",
   "type": "module",
-  "private": true,
-  "dependencies": {
-    "@supabase/supabase-js": "^2.0.0"
-  }
+  "private": true
 }

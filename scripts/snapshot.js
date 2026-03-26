@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { execSync } from 'child_process';
 
 const PP_TABLE = [
   75,71,67,63,60,56,53,50,48,45,43,41,39,37,35,33,32,30,29,27,
@@ -10,7 +9,9 @@ const PP_TABLE = [
 ];
 const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1] : 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const MAX_LAST_PLAYED_FETCHES_PER_RUN = 30;
+const MAX_LP_FETCHES = 30;
+const MAX_SNAPSHOTS = 2000;
+const HISTORY_FILE = 'history.json';
 
 async function fetchLastPlayed(uuid) {
   try {
@@ -53,7 +54,7 @@ async function main() {
     const boundary = sorted[targetPosition - 1];
     if (!boundary) return null;
     const bCurrentPP = boundary.seasonResult?.phasePoint ?? 0;
-    const bEloRk     = eloMap[boundary.uuid]?.eloRank ?? boundary.eloRank ?? targetPosition;
+    const bEloRk = eloMap[boundary.uuid]?.eloRank ?? boundary.eloRank ?? targetPosition;
     for (let r = eloRk; r >= 1; r--) {
       const myNew = currentPP + p3Points(r);
       let bNewEloRk = bEloRk;
@@ -66,17 +67,16 @@ async function main() {
     return null;
   }
 
-  const { data: prevRows } = await supabase
-    .from('snapshots')
-    .select('players')
-    .order('captured_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const prevMap = {};
-  for (const p of (prevRows?.players ?? [])) {
-    prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
+  // Load existing history from file
+  let history = [];
+  if (existsSync(HISTORY_FILE)) {
+    try { history = JSON.parse(readFileSync(HISTORY_FILE, 'utf8')); } catch {}
   }
+
+  // Get previous snapshot for last-played cache
+  const prevPlayers = history.length ? history[history.length - 1].players : [];
+  const prevMap = {};
+  for (const p of prevPlayers) prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
   const allUuids = [
@@ -93,7 +93,7 @@ async function main() {
     if (diff !== 0 && diff !== -5) needsFetch.push(uuid);
   }
 
-  const toFetch = needsFetch.slice(0, MAX_LAST_PLAYED_FETCHES_PER_RUN);
+  const toFetch = needsFetch.slice(0, MAX_LP_FETCHES);
   console.log(`Fetching lastPlayed for ${toFetch.length}/${needsFetch.length} needed, reusing ${allUuids.length - needsFetch.length} from cache`);
 
   const lastPlayedMap = {};
@@ -111,13 +111,11 @@ async function main() {
     const currentPP = u.seasonResult?.phasePoint ?? 0;
     const predPP    = u.predPhasePoint;
     const ppRk      = idx + 1;
-
     let qualType, qualGap;
     if (ppRk === 1)                             { qualType = 'top';       qualGap = 0; }
     else if (ppRk <= 12)                        { qualType = 'seed';      qualGap = simulateQual(currentPP, eloRate, eloRk, ppRk - 1); }
     else if (lcqPP !== null && predPP >= lcqPP) { qualType = 'lcq_to_po'; qualGap = simulateQual(currentPP, eloRate, eloRk, 12); }
     else                                        { qualType = 'lcq';       qualGap = simulateQual(currentPP, eloRate, eloRk, 100); }
-
     return { uuid: u.uuid, eloRate, ppRk, qualType, qualGap, lastPlayed: lastPlayedMap[u.uuid] ?? null };
   });
 
@@ -129,15 +127,25 @@ async function main() {
     players.push({ uuid: u.uuid, eloRate, ppRk: sorted.length + 1, qualType: 'lcq', qualGap: simulateQual(currentPP, eloRate, eloRk, 100), lastPlayed: lastPlayedMap[u.uuid] ?? null });
   }
 
-  const { error } = await supabase.from('snapshots').insert({ captured_at: new Date().toISOString(), players });
-  if (error) throw new Error(`Supabase insert failed: ${error.message}`);
-  console.log(`Saved ${players.length} players at ${new Date().toISOString()}`);
+  // Append new snapshot and prune old ones
+  const now = Math.floor(Date.now() / 1000);
+  history.push({ t: now, players });
+  if (history.length > MAX_SNAPSHOTS) history.splice(0, history.length - MAX_SNAPSHOTS);
 
-  const { count } = await supabase.from('snapshots').select('id', { count: 'exact', head: true });
-  if (count && count > 2000) {
-    const { data: oldest } = await supabase.from('snapshots').select('id').order('captured_at', { ascending: true }).limit(count - 2000);
-    if (oldest?.length) await supabase.from('snapshots').delete().in('id', oldest.map(r => r.id));
-    console.log(`Pruned ${oldest?.length ?? 0} old snapshots`);
+  writeFileSync(HISTORY_FILE, JSON.stringify(history));
+  console.log(`Saved ${players.length} players, ${history.length} total snapshots`);
+
+  // Commit and push
+  execSync('git config user.name "github-actions[bot]"');
+  execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
+  execSync(`git add ${HISTORY_FILE}`);
+  try {
+    execSync('git diff --staged --quiet');
+    console.log('No changes to commit');
+  } catch {
+    execSync(`git commit -m "snapshot ${new Date().toISOString()}"`);
+    execSync('git push');
+    console.log('Pushed history.json');
   }
 }
 
