@@ -671,7 +671,7 @@ function qualPill(q) {
     return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   }
   if (q.gap === 0) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
-  const rankStr = q.rank != null ? ` <span style="opacity:.5">(elo rank ${q.rank})</span>` : '';
+  const rankStr = q.rank != null ? ` <span style="opacity:.5">(elo ${q.rank})</span>` : '';
   return `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
 }
 
