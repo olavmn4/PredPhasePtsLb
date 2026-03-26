@@ -1,8 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
-  global: { fetch: (url, opts) => fetch(url, { ...opts, signal: AbortSignal.timeout(25000) }) }
-});
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 const PP_TABLE = [
   75,71,67,63,60,56,53,50,48,45,43,41,39,37,35,33,32,30,29,27,
@@ -72,10 +70,11 @@ async function main() {
     .from('snapshots')
     .select('players')
     .order('captured_at', { ascending: false })
-    .limit(1);
+    .limit(1)
+    .maybeSingle();
 
   const prevMap = {};
-  for (const p of (prevRows?.[0]?.players ?? [])) {
+  for (const p of (prevRows?.players ?? [])) {
     prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
   }
 
@@ -134,10 +133,11 @@ async function main() {
   if (error) throw new Error(`Supabase insert failed: ${error.message}`);
   console.log(`Saved ${players.length} players at ${new Date().toISOString()}`);
 
-  const { data: oldest } = await supabase.from('snapshots').select('id').order('captured_at', { ascending: true });
-  if (oldest && oldest.length > 2000) {
-    const toDelete = oldest.slice(0, oldest.length - 2000).map(r => r.id);
-    await supabase.from('snapshots').delete().in('id', toDelete);
+  const { count } = await supabase.from('snapshots').select('id', { count: 'exact', head: true });
+  if (count && count > 2000) {
+    const { data: oldest } = await supabase.from('snapshots').select('id').order('captured_at', { ascending: true }).limit(count - 2000);
+    if (oldest?.length) await supabase.from('snapshots').delete().in('id', oldest.map(r => r.id));
+    console.log(`Pruned ${oldest?.length ?? 0} old snapshots`);
   }
 }
 

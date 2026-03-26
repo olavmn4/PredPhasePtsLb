@@ -880,7 +880,7 @@ let tsHistory = {};
 async function loadServerHistory() {
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/snapshots?select=captured_at,players&order=captured_at.asc`,
+      `${SUPABASE_URL}/rest/v1/snapshots?select=captured_at,players&order=captured_at.asc&limit=500`,
       { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` } }
     );
     const rows = await r.json();
