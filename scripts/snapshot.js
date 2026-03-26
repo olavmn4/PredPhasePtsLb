@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
+  global: { fetch: (url, opts) => fetch(url, { ...opts, signal: AbortSignal.timeout(25000) }) }
+});
 
 const PP_TABLE = [
   75,71,67,63,60,56,53,50,48,45,43,41,39,37,35,33,32,30,29,27,
@@ -117,7 +119,7 @@ async function main() {
     else if (lcqPP !== null && predPP >= lcqPP) { qualType = 'lcq_to_po'; qualGap = simulateQual(currentPP, eloRate, eloRk, 12); }
     else                                        { qualType = 'lcq';       qualGap = simulateQual(currentPP, eloRate, eloRk, 100); }
 
-    return { uuid: u.uuid, name: u.nickname, country: u.country ?? null, eloRate, eloRk, predPP, currentPP, ppRk, qualType, qualGap, lastPlayed: lastPlayedMap[u.uuid] ?? null };
+    return { uuid: u.uuid, eloRate, ppRk, qualType, qualGap, lastPlayed: lastPlayedMap[u.uuid] ?? null };
   });
 
   for (const u of rawElo) {
@@ -125,7 +127,7 @@ async function main() {
     const eloRate   = u.eloRate ?? 0;
     const eloRk     = u.eloRank ?? 999;
     const currentPP = u.seasonResult?.phasePoint ?? 0;
-    players.push({ uuid: u.uuid, name: u.nickname, country: u.country ?? null, eloRate, eloRk, predPP: 0, currentPP, ppRk: sorted.length + 1, qualType: 'lcq', qualGap: simulateQual(currentPP, eloRate, eloRk, 100), lastPlayed: lastPlayedMap[u.uuid] ?? null });
+    players.push({ uuid: u.uuid, eloRate, ppRk: sorted.length + 1, qualType: 'lcq', qualGap: simulateQual(currentPP, eloRate, eloRk, 100), lastPlayed: lastPlayedMap[u.uuid] ?? null });
   }
 
   const { error } = await supabase.from('snapshots').insert({ captured_at: new Date().toISOString(), players });
