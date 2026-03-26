@@ -40,7 +40,7 @@
     border-bottom: 1px solid var(--border);
     padding: 20px 0 0; position: sticky; top: 0; z-index: 100; background: var(--bg);
   }
-  .header-inner { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
+  .header-inner { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
   .header-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
   h1 { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: .03em; }
   .season-tag {
@@ -79,7 +79,7 @@
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
   /* ── Main ── */
-  main { max-width: 1060px; margin: 0 auto; padding: 22px 20px; }
+  main { max-width: 1160px; margin: 0 auto; padding: 22px 20px; }
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -230,8 +230,22 @@
   #modal-canvas { width: 100% !important; height: 100% !important; }
   #main-tbody tr:not(.threshold-row) { cursor: pointer; }
 
+  #history-chart-wrap {
+    display: flex; gap: 16px; align-items: flex-start;
+  }
+  #history-chart-wrap canvas { flex: 1; min-width: 0; }
+  #history-legend {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--muted); min-width: 110px;
+  }
+  .hist-legend-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 3px 0; cursor: default; white-space: nowrap;
+  }
+  .hist-legend-swatch { width: 18px; height: 2px; flex-shrink: 0; border-radius: 1px; }
+
   footer {
-    max-width: 1060px; margin: 36px auto 20px; padding: 16px 20px 0;
+    max-width: 1160px; margin: 36px auto 20px; padding: 16px 20px 0;
     border-top: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace;
     font-size: 11px; color: var(--muted);
     display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -287,7 +301,7 @@
         <thead>
           <tr>
             <th data-col="ppRank" class="sorted num">#<span class="sort-icon">↑</span></th>
-            <th data-col="phaseMove" class="num">↑ phase<span class="sort-icon">↕</span></th>
+            <th data-col="phaseMove" style="width:52px">↑ phase<span class="sort-icon">↕</span></th>
             <th data-col="name">player</th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
@@ -364,16 +378,18 @@
       <button class="filter-btn active" id="hist-top12-btn">top 12</button>
       <button class="filter-btn" id="hist-top100-btn">top 100 + tied</button>
     </div>
-    <div class="table-wrap" style="padding:20px 16px">
+    <div class="table-wrap" style="padding:16px">
       <div class="state-msg" id="history-empty" style="padding:32px 0">
         <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)">
           tracking starts automatically — check back after a few refreshes
         </span>
       </div>
-      <canvas id="history-canvas" style="display:none;width:100%;height:380px"></canvas>
+      <div id="history-chart-wrap" style="display:none">
+        <div id="history-legend" style="display:none;overflow-y:auto;max-height:420px;padding-right:10px;flex-shrink:0"></div>
+        <canvas id="history-canvas" style="min-height:380px"></canvas>
+      </div>
     </div>
   </div>
-
 
 <div id="modal-overlay" style="display:none">
   <div id="modal">
@@ -831,7 +847,7 @@ function renderTable() {
 
     html += `<tr data-uuid="${u.uuid}">
       <td class="num"><span class="rank-num ${rankCls(idx+1)}">${idx+1}</span></td>
-      <td class="num">${phaseMoveCell(u.phaseMove)}</td>
+      <td style="width:52px">${phaseMoveCell(u.phaseMove)}</td>
       <td>
         <div class="player-cell">
           <img class="avatar" src="${avatarUrl(u.uuid)}" alt="" loading="lazy" onerror="this.style.display='none'">
@@ -1393,7 +1409,8 @@ function closeModal() {
 
 // ── Standings History Tab ─────────────────────────────────────────────────
 let historyChart = null;
-let historyMode  = 'top12'; // 'top12' | 'top100'
+let historyMode  = 'top12';
+const helmImageCache = {}; // uuid → Image object
 
 // Assign a stable color per player from a palette
 const HISTORY_PALETTE = [
@@ -1407,20 +1424,18 @@ const playerColor = (() => {
 })();
 
 function renderHistoryChart() {
-  const canvas  = document.getElementById('history-canvas');
-  const empty   = document.getElementById('history-empty');
+  const wrap   = document.getElementById('history-chart-wrap');
+  const canvas = document.getElementById('history-canvas');
+  const legend = document.getElementById('history-legend');
+  const empty  = document.getElementById('history-empty');
 
-  // Collect all players that have history
-  const allHist = Object.entries(tsHistory); // [ [uuid, [{t,ppRk,...}]] ]
+  const allHist = Object.entries(tsHistory);
   if (!allHist.length || allHist.every(([,h]) => h.length < 2)) {
-    empty.style.display = 'flex';
-    canvas.style.display = 'none';
+    empty.style.display = 'flex'; wrap.style.display = 'none';
     if (historyChart) { historyChart.destroy(); historyChart = null; }
     return;
   }
 
-  // Determine which players to include based on mode
-  // Use their most recent ppRk to decide inclusion
   const phasePlayers = mergedData.filter(u => !u._isZeroPP);
   const lcqThresholdPP = phasePlayers.length >= 100 ? phasePlayers[99]?.predPP : null;
 
@@ -1428,28 +1443,25 @@ function renderHistoryChart() {
     const u = mergedData.find(x => x.uuid === uuid);
     if (!u) return false;
     if (historyMode === 'top12') return u.ppRk <= 12;
-    // top100 + tied
     return lcqThresholdPP !== null ? u.predPP >= lcqThresholdPP : u.ppRk <= 100;
   });
 
   if (!included.length) {
-    empty.style.display = 'flex';
-    canvas.style.display = 'none';
+    empty.style.display = 'flex'; wrap.style.display = 'none';
     if (historyChart) { historyChart.destroy(); historyChart = null; }
     return;
   }
 
   empty.style.display = 'none';
+  wrap.style.display = 'flex';
   canvas.style.display = 'block';
   if (historyChart) { historyChart.destroy(); historyChart = null; }
 
-  // Build unified timestamp axis (union of all timestamps, sorted)
   const allTs = [...new Set(included.flatMap(([,h]) => h.map(p => p.t)))].sort((a,b)=>a-b);
   const labels = allTs.map(t => fmtAxisTime(t));
 
   const datasets = included.map(([uuid, hist]) => {
     const u = mergedData.find(x => x.uuid === uuid);
-    // For each global timestamp, find closest recorded ppRk (fill forward)
     let lastRk = null;
     const data = allTs.map(t => {
       const pt = [...hist].reverse().find(p => p.t <= t);
@@ -1461,26 +1473,68 @@ function renderHistoryChart() {
       data,
       borderColor: playerColor(uuid),
       backgroundColor: 'rgba(0,0,0,0)',
-      borderWidth: 1.5,
-      pointRadius: 0,
-      pointHoverRadius: 3,
-      tension: 0.1,
-      fill: false,
+      borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3,
+      tension: 0.1, fill: false,
+      uuid,
     };
   });
 
+  // For top12: build custom legend with helms, and add endpoint helm images via plugin
+  const isTop12 = historyMode === 'top12';
+
+  // Build side legend HTML
+  legend.style.display = isTop12 ? 'block' : 'block'; // always show
+  legend.innerHTML = datasets.map(ds => {
+    const u = mergedData.find(x => x.uuid === ds.uuid);
+    const helmUrl = `https://minotar.net/helm/${ds.uuid.replace(/-/g,'')}/16`;
+    return `<div class="hist-legend-item">
+      <div class="hist-legend-swatch" style="background:${ds.borderColor}"></div>
+      ${isTop12 ? `<img src="${helmUrl}" width="14" height="14" style="image-rendering:pixelated;border-radius:0;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+      <span>${esc(u?.nickname ?? ds.label)}</span>
+    </div>`;
+  }).join('');
+
+  // Plugin: draw helm at end of each line (top12 only)
+  const helmPlugin = {
+    id: 'helmEndpoints',
+    afterDatasetsDraw(chart) {
+      if (!isTop12) return;
+      const ctx2 = chart.ctx;
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        const lastPoint = meta.data[meta.data.length - 1];
+        if (!lastPoint) return;
+        const uuid = ds.uuid;
+        if (!uuid) return;
+        const img = helmImageCache[uuid];
+        if (!img || !img.complete) return;
+        const x = lastPoint.x;
+        const y = lastPoint.y;
+        ctx2.drawImage(img, x + 3, y - 8, 16, 16);
+      });
+    },
+  };
+
+  // Preload helm images
+  datasets.forEach(ds => {
+    if (ds.uuid && !helmImageCache[ds.uuid]) {
+      const img = new Image();
+      img.src = `https://minotar.net/helm/${ds.uuid.replace(/-/g,'')}/16`;
+      img.onload = () => { if (historyChart) historyChart.draw(); };
+      helmImageCache[ds.uuid] = img;
+    }
+  });
+
   const opts = chartBaseOpts();
-  historyChart = new Chart(document.getElementById('history-canvas').getContext('2d'), {
+  historyChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: { labels, datasets },
+    plugins: isTop12 ? [helmPlugin] : [],
     options: {
       ...opts,
       plugins: {
         ...opts.plugins,
-        legend: {
-          display: true,
-          labels: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, boxWidth: 12, padding: 14 },
-        },
+        legend: { display: false }, // we use our custom side legend
         tooltip: { ...opts.plugins.tooltip, callbacks: {
           title: i => labels[i[0].dataIndex],
           label: i => ` ${i.dataset.label}: #${i.raw}`,
