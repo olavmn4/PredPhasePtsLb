@@ -705,7 +705,7 @@ function phaseMoveCell(v) {
   return `<span style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500">▼${Math.abs(v)}</span>`;
 }
 
-
+function qualPill(q) {
   if (!q) return '';
   if (q.type === 'top') return `<span class="qual-top">—</span>`;
   const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:'↑ seed' };
