@@ -615,51 +615,33 @@ function buildMerged() {
     // lowers their predicted PP. We account for this.
 
     function simulateQual(targetPosition) {
-      // targetPosition: 12 for playoffs, 100 for LCQ, ppRk-1 for seed-up
-      // Returns Elo gap needed, or null if unreachable, or 0 if already there
+      const boundaryIdx       = targetPosition - 1;
+      const boundaryPlayer    = sorted[boundaryIdx];
+      if (!boundaryPlayer) return { gap: null, rank: null };
 
-      // Get boundary player (the one currently at targetPosition in sorted[])
-      const boundaryIdx  = targetPosition - 1; // 0-indexed
-      const boundaryPlayer = sorted[boundaryIdx];
-      if (!boundaryPlayer) return null;
-
-      const boundaryUuid    = boundaryPlayer.uuid;
+      const boundaryUuid      = boundaryPlayer.uuid;
       const boundaryCurrentPP = boundaryPlayer.seasonResult?.phasePoint ?? 0;
-      const boundaryEloRk   = eloMap[boundaryUuid]?.eloRank ?? boundaryPlayer.eloRank ?? targetPosition;
+      const boundaryEloRk     = eloMap[boundaryUuid]?.eloRank ?? boundaryPlayer.eloRank ?? targetPosition;
 
-      // Scan Elo ranks from 1 up to player's current Elo rank
       for (let r = eloRk; r >= 1; r--) {
-        // Player's new predicted PP at Elo rank r
         const myNewPredPP = currentPP + p3Points(r);
-
-        // Boundary player's new Elo rank: if they are below r and above/equal
-        // to current player's rank, they get bumped down by 1
         let boundaryNewEloRk = boundaryEloRk;
-        if (boundaryEloRk >= r && boundaryEloRk < eloRk) {
-          boundaryNewEloRk = boundaryEloRk + 1;
-        }
+        if (boundaryEloRk >= r && boundaryEloRk < eloRk) boundaryNewEloRk = boundaryEloRk + 1;
         const boundaryNewPredPP = boundaryCurrentPP + p3Points(boundaryNewEloRk);
 
-        // Does the player beat the boundary on PP?
         if (myNewPredPP > boundaryNewPredPP) {
-          // Clear win — return Elo gap to player currently at rank r
           const targetElo = eloByRank[r] ?? 0;
-          return Math.max(0, targetElo - eloRate);
+          return { gap: Math.max(0, targetElo - eloRate), rank: r };
         }
-
-        // Exact tie on PP — tiebreak is Elo. Player needs higher Elo than
-        // the boundary player's new Elo (eloByRank[boundaryNewEloRk]).
         if (myNewPredPP === boundaryNewPredPP) {
           const boundaryNewElo = eloByRank[boundaryNewEloRk] ?? 0;
           const targetElo      = eloByRank[r] ?? 0;
           if (targetElo > boundaryNewElo) {
-            // Getting to rank r gives more Elo than boundary — wins tiebreak
-            return Math.max(0, targetElo - eloRate);
+            return { gap: Math.max(0, targetElo - eloRate), rank: r };
           }
-          // Tied on PP and Elo still <= boundary — continue scanning
         }
       }
-      return null; // unreachable within current Elo range
+      return { gap: null, rank: null };
     }
 
     let qualData = null;
@@ -668,19 +650,16 @@ function buildMerged() {
       qualData = { type:'top' };
 
     } else if (ppRk <= 12) {
-      // Move up one seed: beat the player at position ppRk-1
-      const gap = simulateQual(ppRk - 1);
-      qualData = { type:'seed', gap };
+      const { gap, rank } = simulateQual(ppRk - 1);
+      qualData = { type:'seed', gap, rank };
 
     } else if (lcqThresholdPP !== null && predPP >= lcqThresholdPP) {
-      // In LCQ — target playoffs: beat position 12
-      const gap = simulateQual(12);
-      qualData = { type:'po', gap };
+      const { gap, rank } = simulateQual(12);
+      qualData = { type:'po', gap, rank };
 
     } else {
-      // Outside top 100 — target LCQ: beat position 100
-      const gap = simulateQual(100);
-      qualData = { type:'lcq', gap };
+      const { gap, rank } = simulateQual(100);
+      qualData = { type:'lcq', gap, rank };
     }
 
     return {
@@ -732,8 +711,8 @@ function qualPill(q) {
     return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   }
   if (q.gap === 0) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
-  const note = q.note ? ` <span style="opacity:.55">(${q.note})</span>` : '';
-  return `<span class="qual-pill ${klass}">${label} +${q.gap} elo${note}</span>`;
+  const rankStr = q.rank != null ? ` <span style="opacity:.5">(elo rank ${q.rank})</span>` : '';
+  return `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
 }
 
 function fmtAgo(unixSec) {
@@ -1495,22 +1474,28 @@ function renderHistoryChart() {
   }).join('');
 
   // Plugin: draw helm at end of each line (top12 only)
+  const HELM_SIZE = 20;
   const helmPlugin = {
     id: 'helmEndpoints',
-    afterDatasetsDraw(chart) {
+    afterDraw(chart) {
       if (!isTop12) return;
       const ctx2 = chart.ctx;
+      ctx2.save();
+      // Remove clipping so helms can draw outside chart area
+      ctx2.restore();
       chart.data.datasets.forEach((ds, i) => {
         const meta = chart.getDatasetMeta(i);
-        const lastPoint = meta.data[meta.data.length - 1];
+        // Find last non-null point
+        let lastPoint = null;
+        for (let j = meta.data.length - 1; j >= 0; j--) {
+          if (ds.data[j] != null) { lastPoint = meta.data[j]; break; }
+        }
         if (!lastPoint) return;
         const uuid = ds.uuid;
         if (!uuid) return;
         const img = helmImageCache[uuid];
         if (!img || !img.complete) return;
-        const x = lastPoint.x;
-        const y = lastPoint.y;
-        ctx2.drawImage(img, x + 3, y - 8, 16, 16);
+        ctx2.drawImage(img, lastPoint.x + 4, lastPoint.y - HELM_SIZE / 2, HELM_SIZE, HELM_SIZE);
       });
     },
   };
@@ -1532,6 +1517,7 @@ function renderHistoryChart() {
     plugins: isTop12 ? [helmPlugin] : [],
     options: {
       ...opts,
+      layout: { padding: { right: isTop12 ? 28 : 0 } },
       plugins: {
         ...opts.plugins,
         legend: { display: false }, // we use our custom side legend
