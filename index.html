@@ -287,14 +287,13 @@
         <thead>
           <tr>
             <th data-col="ppRank" class="sorted num">#<span class="sort-icon">↑</span></th>
-            <th data-col="phaseMove" class="num">phase Δ<span class="sort-icon">↕</span></th>
+            <th data-col="phaseMove" class="num">↑ phase<span class="sort-icon">↕</span></th>
             <th data-col="name">player</th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
             <th data-col="gain" class="num">+gain<span class="sort-icon">↕</span></th>
             <th data-col="elo" class="num">elo<span class="sort-icon">↕</span></th>
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
-            <th class="no-sort" style="width:80px">progress</th>
             <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
           </tr>
@@ -712,8 +711,11 @@ function qualPill(q) {
   const cls    = { lcq:'qual-lcq', po:'qual-po', seed:'qual-seed' };
   const label  = labels[q.type];
   const klass  = cls[q.type];
-  if (q.gap === null) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">unreachable</span></span>`;
-  if (q.gap === 0)    return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
+  if (q.gap === null) {
+    const msg = q.type === 'seed' ? 'out of your hands' : 'unreachable this phase';
+    return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
+  }
+  if (q.gap === 0) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
   const note = q.note ? ` <span style="opacity:.55">(${q.note})</span>` : '';
   return `<span class="qual-pill ${klass}">${label} +${q.gap} elo${note}</span>`;
 }
@@ -810,7 +812,6 @@ function renderTable() {
   table.style.display   = '';
 
   const rows = getRows();
-  const maxPP = Math.max(...mergedData.filter(u => u.predPP > 0).map(u => u.predPP), 1);
   const naturalOrder = sortState.col === 'ppRank' && sortState.asc;
 
   // Thresholds: use positional index from full sorted mergedData
@@ -826,7 +827,6 @@ function renderTable() {
   let shownLCQ      = false;
 
   rows.forEach((u, idx) => {
-    const pct = u.predPP > 0 ? Math.round((u.predPP / maxPP) * 100) : 0;
     const f   = flag(u.country);
 
     html += `<tr data-uuid="${u.uuid}">
@@ -845,7 +845,6 @@ function renderTable() {
       <td class="num"><span class="pp-gain">+${u.gain}</span></td>
       <td class="num"><span class="mono" style="font-weight:500;color:${eloColor(u.eloRate)}">${u.eloRate ?? '—'}</span></td>
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
-      <td><div class="pp-bar-bg"><div class="pp-bar-fill" style="width:${pct}%"></div></div></td>
       <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
     </tr>`;
@@ -857,7 +856,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="11">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="10">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -865,7 +864,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="11">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="10">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
