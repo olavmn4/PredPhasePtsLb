@@ -427,7 +427,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
-// ── Phase 3 points by Elo rank (index 0 = rank 1) ────────────────────────
 const PP_TABLE = [
   [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
   [5,40,48,60,79],[6,38,45,56,75],[7,36,43,53,71],[8,34,40,50,67],
@@ -455,16 +454,13 @@ const PP_TABLE = [
   [93,3,3,4,5],[94,3,3,4,5],[95,3,3,4,5],[96,3,3,4,5],
   [97,3,3,4,5],[98,3,3,4,5],[99,3,3,4,5],[100,3,3,4,5],
 ];
-// p3Points[rank] — rank is 1-indexed
 const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
 
-// Populate About reference table
 document.getElementById('pp-ref-tbody').innerHTML =
   PP_TABLE.map(([r,p1,p2,p3,p4]) =>
     `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td class="cur-phase">${p3}</td><td>${p4}</td></tr>`
   ).join('');
 
-// ── State ─────────────────────────────────────────────────────────────────
 let mergedData  = [];
 let rawPhase    = [];
 let rawElo      = [];
@@ -474,7 +470,6 @@ let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
 
-// In-memory last-played tracking
 let prevEloSnapshot  = {};  // uuid → eloRate, for detecting games every 60s
 let lastPlayedMemory = {};  // uuid → unix timestamp (best known value)
 let lastPlayedFetched = false; // only run the API fetch once per page load
@@ -490,7 +485,6 @@ function detectGamesFromElo(allPlayers) {
   }
 }
 
-// Fetch last match date for a single player from MCSR API
 async function fetchLastPlayedApi(uuid) {
   try {
     const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
@@ -500,8 +494,6 @@ async function fetchLastPlayedApi(uuid) {
   return null;
 }
 
-// Background fetch — runs once on first page load, updates lastPlayedMemory
-// as each player's data arrives, rebuilding mergedData each time
 async function populateLastPlayedFromApi(players) {
   if (lastPlayedFetched) return;
   lastPlayedFetched = true;
@@ -516,7 +508,6 @@ async function populateLastPlayedFromApi(players) {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const flag = c => c ? [...c.toUpperCase()].map(ch => String.fromCodePoint(0x1F1E6+ch.charCodeAt(0)-65)).join('') : '';
 const roleBadge = () => '';
@@ -535,24 +526,18 @@ function fmtCountdown(ts) {
   return `phase ends in <strong>${mins}m</strong>`;
 }
 
-// ── Merge + enrich ────────────────────────────────────────────────────────
 function buildMerged() {
-  // Build Elo lookup by uuid: uuid → { eloRate, eloRank }
   const eloMap = {};
   for (const u of rawElo) eloMap[u.uuid] = { eloRate: u.eloRate, eloRank: u.eloRank };
 
-  // Build Elo rank → eloRate map using actual sorted position
   eloByRank = {};
   const eloSorted = [...rawElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
   eloSorted.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
 
-  // Sort phase data by predPhasePoint desc, then eloRank asc as tiebreak
   const sorted = [...rawPhase].sort((a,b) =>
     b.predPhasePoint - a.predPhasePoint || a.eloRank - b.eloRank
   );
 
-  // Assign ppRank with proper dense tie handling:
-  // ppRank = position of first occurrence of this PP value (1-indexed)
   for (let i = 0; i < sorted.length; i++) {
     if (i > 0 && sorted[i].predPhasePoint === sorted[i-1].predPhasePoint) {
       sorted[i]._ppRank = sorted[i-1]._ppRank;
@@ -561,14 +546,9 @@ function buildMerged() {
     }
   }
 
-  // LCQ threshold: PP value of the player at position 100 (0-indexed: 99)
-  // i.e. the 100th entry in sorted order — all players with PP >= this qualify
   const lcqThresholdPP    = sorted.length >= 100 ? sorted[99].predPhasePoint : null;
-  // Playoffs threshold: PP value of the player at position 12 (0-indexed: 11)
   const playoffsThresholdPP = sorted.length >= 12  ? sorted[11].predPhasePoint : null;
 
-  // Append players from Elo leaderboard who have 0 predicted phase points
-  // (not present in rawPhase at all)
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
   const zeroPPPlayers = rawElo
     .filter(u => !phaseUuids.has(u.uuid))
@@ -596,23 +576,6 @@ function buildMerged() {
     const eloRk     = elo.eloRank;
     const eloRate   = elo.eloRate ?? 0;
 
-    // ── "To qualify" simulation ───────────────────────────────────────
-    // For each possible Elo rank r (1 → player's current rank), simulate
-    // what the player's predicted PP would be, then check if they'd meet
-    // the target on the PP leaderboard. Return the Elo of the person
-    // currently sitting at the first r that clears the target.
-    //
-    // When a player moves to Elo rank r, everyone between r and their
-    // current rank shifts down by 1. Their new predPP = currentPP + p3Points(r).
-    // The other players' predPP values are unchanged (their currentPP stays
-    // the same, their new Elo rank = old rank + 1, so p3Points drops by
-    // roughly 1 step — but since we only care about whether THIS player
-    // crosses a threshold relative to specific boundary players, we only
-    // need to check their new PP against the boundary players' PP.
-    //
-    // Boundary players (12th, 100th) have their Elo rank bumped by 1 if
-    // they are between r and the player's current rank, which slightly
-    // lowers their predicted PP. We account for this.
 
     function simulateQual(targetPosition) {
       const boundaryIdx       = targetPosition - 1;
@@ -675,9 +638,6 @@ function buildMerged() {
     };
   });
 
-  // ── Phase movement: compare pred PP rank vs pre-phase rank ───────────────
-  // Pre-phase rank = rank based on currentPP alone (what they had before phase 3)
-  // Sort by currentPP desc, eloRate desc as tiebreak (same tiebreak as main rank)
   const preSorted = [...mergedData]
     .filter(u => !u._isZeroPP)
     .sort((a, b) => b.currentPP - a.currentPP || b.eloRate - a.eloRate);
@@ -742,7 +702,6 @@ async function fetchAll(spin=true) {
     }
     if (ej.status === 'success') rawElo = ej.data.users || [];
 
-    // Detect games from Elo changes since last refresh
     const allPlayers = [...rawPhase, ...rawElo.filter(u => !rawPhase.find(p => p.uuid === u.uuid))];
     detectGamesFromElo(allPlayers);
 
@@ -755,7 +714,6 @@ async function fetchAll(spin=true) {
     document.getElementById('last-updated').textContent =
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
-    // Background: fetch fresh last-played from MCSR API once per page load
     populateLastPlayedFromApi(allPlayers);
   } catch(e) {
     console.error(e);
@@ -765,7 +723,6 @@ async function fetchAll(spin=true) {
   }
 }
 
-// ── Render ────────────────────────────────────────────────────────────────
 function getRows() {
   let d = [...mergedData];
   if (searchQuery) {
@@ -774,7 +731,6 @@ function getRows() {
   }
   if (filterMode === 'top12')  d = d.filter(u => u.ppRk <= 12);
   if (filterMode === 'top100') {
-    // include all with PP >= the value at position 100, exclude zero-PP players
     const phasePlayers = mergedData.filter(x => !x._isZeroPP);
     const threshold = phasePlayers.length >= 100 ? phasePlayers[99].predPP : null;
     d = d.filter(u => !u._isZeroPP && (threshold === null || u.predPP >= threshold));
@@ -809,12 +765,8 @@ function renderTable() {
   const rows = getRows();
   const naturalOrder = sortState.col === 'ppRank' && sortState.asc;
 
-  // Thresholds: use positional index from full sorted mergedData
-  // mergedData is already sorted by ppRank asc (built that way in buildMerged)
   const phasePlayers = mergedData.filter(u => !u._isZeroPP);
-  // PP value at position 12 (0-indexed 11) — all with PP >= this are playoffs-eligible
   const playoffsThresholdPP = phasePlayers.length >= 12 ? phasePlayers[11].predPP : null;
-  // PP value at position 100 (0-indexed 99) — all with PP >= this qualify for LCQ
   const lcqThresholdPP = phasePlayers.length >= 100 ? phasePlayers[99].predPP : null;
 
   let html = '';
@@ -844,7 +796,6 @@ function renderTable() {
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
     </tr>`;
 
-    // Insert banners AFTER the current row
     if (naturalOrder) {
       const next = rows[idx+1];
       if (!shownPlayoffs && playoffsThresholdPP !== null) {
@@ -869,7 +820,6 @@ function renderTable() {
   document.getElementById('main-tbody').innerHTML = html;
 }
 
-// ── Sorting ───────────────────────────────────────────────────────────────
 document.querySelectorAll('#main-table thead th').forEach(th => {
   const col = th.dataset.col;
   if (!col || th.classList.contains('no-sort')) return;
@@ -888,7 +838,6 @@ document.querySelectorAll('#main-table thead th').forEach(th => {
   });
 });
 
-// ── Tabs ──────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -899,7 +848,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ── Filters ───────────────────────────────────────────────────────────────
 document.querySelectorAll('[data-filter]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
@@ -909,26 +857,20 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
   });
 });
 
-// ── Search ────────────────────────────────────────────────────────────────
 document.getElementById('main-search').addEventListener('input', e => {
   searchQuery = e.target.value.trim();
   renderTable();
 });
 
-// ── Refresh ───────────────────────────────────────────────────────────────
 document.getElementById('btn-refresh').addEventListener('click', () => fetchAll(true));
 
-// ── Auto-refresh every 60s ────────────────────────────────────────────────
 setInterval(() => fetchAll(false), 60_000);
 
-// ── Countdown ticker every 30s ────────────────────────────────────────────
 setInterval(() => {
   if (phaseEndsAt)
     document.getElementById('phase-countdown').innerHTML = fmtCountdown(phaseEndsAt);
 }, 30_000);
 
-// ── Server-side history (Supabase) ────────────────────────────────────────
-// Fill these in after creating your Supabase project
 const SUPABASE_URL     = 'https://sjolzauhagjnuupectfs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqb2x6YXVoYWdqbnV1cGVjdGZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NTc2MzAsImV4cCI6MjA4OTMzMzYzMH0.nDg1UAW2tOcrH-UaPK1H86iLoHECUEoM0gNM6n9s_eg';
 
@@ -955,7 +897,6 @@ async function loadServerHistory() {
   } catch(e) { console.warn('history fetch failed', e); }
 }
 
-// serverLastPlayed: uuid → unix timestamp, populated from latest snapshot
 let serverLastPlayed = {};
 
 function buildTsHistory() {
@@ -970,14 +911,12 @@ function buildTsHistory() {
 }
 
 function buildServerLastPlayed() {
-  // Use the most recent snapshot's lastPlayed values
   if (!serverSnapshots.length) return {};
   const latest = serverSnapshots[serverSnapshots.length - 1];
   const out = {};
   for (const p of (latest.players ?? [])) {
     if (p.lastPlayed) {
       out[p.uuid] = p.lastPlayed;
-      // Seed lastPlayedMemory from server if we don't have a more recent in-memory value
       if (!lastPlayedMemory[p.uuid] || p.lastPlayed > lastPlayedMemory[p.uuid]) {
         lastPlayedMemory[p.uuid] = p.lastPlayed;
       }
@@ -988,7 +927,6 @@ function buildServerLastPlayed() {
 
 function recordHistorySnapshot() {} // no-op — handled server-side by GitHub Action
 
-// ── Modal ─────────────────────────────────────────────────────────────────
 let modalChart = null;
 let modalMatches = [];
 let modalUser = null;
@@ -1012,7 +950,6 @@ function fmtAxisTime(unixSec) {
   return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
 }
 
-// Build a per-segment gradient for the Elo line based on tier thresholds
 function buildEloGradient(ctx2d, chartArea, dataValues) {
   if (!dataValues.length) return '#4ade80';
   const min = Math.min(...dataValues.filter(v=>v!=null));
@@ -1020,7 +957,6 @@ function buildEloGradient(ctx2d, chartArea, dataValues) {
   if (min === max) return eloColor(min);
 
   const grad = ctx2d.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-  // Add colour stops at each tier boundary that falls within the data range
   const stops = [
     { elo: 0,    color: '#6b7280' },
     { elo: 600,  color: '#d1d5db' },
@@ -1161,7 +1097,6 @@ function renderChart(uuid, type, row) {
   const loading = document.getElementById('modal-chart-loading');
   const canvas  = document.getElementById('modal-canvas');
 
-  // For gap/pprank tabs we use localStorage data — show message if empty
   if ((type === 'gap' || type === 'pprank') && (!tsHistory[uuid] || tsHistory[uuid].length < 2)) {
     loading.style.display = 'flex';
     loading.innerHTML = '<span style="color:var(--muted);font-family:IBM Plex Mono,monospace;font-size:11px">tracking starts automatically — check back after a few refreshes</span>';
@@ -1203,7 +1138,6 @@ function renderChart(uuid, type, row) {
       return '#6b7280';
     };
 
-    // Determine visible tier lines within data range
     const validData = data.filter(v => v != null);
     const minVal = Math.min(...validData);
     const maxVal = Math.max(...validData);
@@ -1250,7 +1184,6 @@ function renderChart(uuid, type, row) {
               },
             },
             afterBuildTicks: axis => {
-              // Inject tier boundary ticks into the visible range
               const extra = visibleTiers.map(t => ({ value: t.min }));
               axis.ticks = [...axis.ticks.filter(t =>
                 !visibleTiers.find(vt => vt.min === t.value)
@@ -1266,7 +1199,6 @@ function renderChart(uuid, type, row) {
     const labels = hist.map(p => fmtAxisTime(p.t));
     const data   = hist.map(p => p.qualGap ?? null);
 
-    // Determine per-point color based on qualType
     const pointColors = hist.map(p =>
       p.qualType === 'lcq_to_po' ? '#60a5fa' :   // in LCQ, targeting playoffs
       p.qualType === 'lcq'       ? '#fbbf24' :   // targeting LCQ
@@ -1274,13 +1206,11 @@ function renderChart(uuid, type, row) {
                                    '#4ade80'      // in playoffs, targeting seed-up
     );
 
-    // Build segments with individual colors using Chart.js segment API
     modalChart = new Chart(ctx, {
       type: 'line',
       data: { labels, datasets: [{
         data,
         borderColor: ctx => {
-          // segment coloring — fall back to single color per point
           return pointColors[ctx.p1DataIndex] ?? '#4ade80';
         },
         segment: {
@@ -1354,7 +1284,6 @@ function renderChart(uuid, type, row) {
   }
 }
 
-// Chart tab switching
 document.querySelectorAll('.chart-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     activeChartTab = tab.dataset.chart;
@@ -1364,7 +1293,6 @@ document.querySelectorAll('.chart-tab').forEach(tab => {
   });
 });
 
-// Open modal on row click
 document.getElementById('main-tbody').addEventListener('click', e => {
   const tr = e.target.closest('tr');
   if (!tr || tr.classList.contains('threshold-row')) return;
@@ -1372,7 +1300,6 @@ document.getElementById('main-tbody').addEventListener('click', e => {
   if (uuid) openModal(uuid);
 });
 
-// Close modal
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
@@ -1386,12 +1313,10 @@ function closeModal() {
   modalMatches = []; modalUser = null;
 }
 
-// ── Standings History Tab ─────────────────────────────────────────────────
 let historyChart = null;
 let historyMode  = 'top12';
 const helmImageCache = {}; // uuid → Image object
 
-// Assign a stable color per player from a palette
 const HISTORY_PALETTE = [
   '#4ade80','#60a5fa','#f59e0b','#f87171','#a78bfa','#34d399','#fb923c',
   '#e879f9','#38bdf8','#fbbf24','#86efac','#c084fc','#fdba74','#6ee7b7',
@@ -1458,10 +1383,8 @@ function renderHistoryChart() {
     };
   });
 
-  // For top12: build custom legend with helms, and add endpoint helm images via plugin
   const isTop12 = historyMode === 'top12';
 
-  // Build side legend HTML
   legend.style.display = isTop12 ? 'block' : 'block'; // always show
   legend.innerHTML = datasets.map(ds => {
     const u = mergedData.find(x => x.uuid === ds.uuid);
@@ -1473,7 +1396,6 @@ function renderHistoryChart() {
     </div>`;
   }).join('');
 
-  // Plugin: draw helm at end of each line (top12 only)
   const HELM_SIZE = 20;
   const helmPlugin = {
     id: 'helmEndpoints',
@@ -1481,11 +1403,9 @@ function renderHistoryChart() {
       if (!isTop12) return;
       const ctx2 = chart.ctx;
       ctx2.save();
-      // Remove clipping so helms can draw outside chart area
       ctx2.restore();
       chart.data.datasets.forEach((ds, i) => {
         const meta = chart.getDatasetMeta(i);
-        // Find last non-null point
         let lastPoint = null;
         for (let j = meta.data.length - 1; j >= 0; j--) {
           if (ds.data[j] != null) { lastPoint = meta.data[j]; break; }
@@ -1500,7 +1420,6 @@ function renderHistoryChart() {
     },
   };
 
-  // Preload helm images
   datasets.forEach(ds => {
     if (ds.uuid && !helmImageCache[ds.uuid]) {
       const img = new Image();
@@ -1547,9 +1466,7 @@ document.getElementById('hist-top100-btn').addEventListener('click', () => {
   renderHistoryChart();
 });
 
-// Re-render history chart when tab becomes active (handled in main tab listener)
 
-// ── Init ──────────────────────────────────────────────────────────────────
 fetchAll(true);
 </script>
 </body>
