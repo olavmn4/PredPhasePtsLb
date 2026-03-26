@@ -879,7 +879,7 @@ let tsHistory = {};
 
 async function loadServerHistory() {
   try {
-    const r = await fetch('/history.json');
+    const r = await fetch('/PredPhasePtsLb/history.json');
     const data = await r.json();
     if (Array.isArray(data)) {
       serverSnapshots = data;
