@@ -308,7 +308,7 @@
             <th data-col="gain" class="num">+gain<span class="sort-icon">↕</span></th>
             <th data-col="elo" class="num">elo<span class="sort-icon">↕</span></th>
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
-            <th class="no-sort">to qualify</th>
+            <th class="no-sort">to qualify <span id="qual-info" title="'need ~rank X in P4' estimates the Elo rank needed in Phase 4 to reach ~159 pts — the historical playoffs cutoff. Approximate." style="cursor:help;opacity:.45;font-size:10px">?</span></th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
           </tr>
         </thead>
@@ -463,8 +463,20 @@ document.getElementById('pp-ref-tbody').innerHTML =
     `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td class="cur-phase">${p3}</td><td>${p4}</td></tr>`
   ).join('');
 
-let mergedData  = [];
-let rawPhase    = [];
+const PLAYOFFS_TARGET_PP = 159; // estimated pts needed for playoffs — adjust if cutoff changes
+
+const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1][4] : 0;
+
+function p4RankNeeded(currentPredPP) {
+  const needed = PLAYOFFS_TARGET_PP - currentPredPP;
+  if (needed <= 0) return null; // already there
+  for (let r = 1; r <= 100; r++) {
+    if (p4Points(r) >= needed) return r;
+  }
+  return null; // unreachable even at rank 1
+}
+
+
 let rawElo      = [];
 let eloByRank   = {};
 let phaseEndsAt = null;
@@ -665,20 +677,37 @@ function phaseMoveCell(v) {
   return `<span style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500">▼${Math.abs(v)}</span>`;
 }
 
-function qualPill(q) {
+function qualPill(q, predPP) {
   if (!q) return '';
   if (q.type === 'top') return `<span class="qual-top">—</span>`;
   const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:'↑ seed' };
   const cls    = { lcq:'qual-lcq', po:'qual-po', seed:'qual-seed' };
   const label  = labels[q.type];
   const klass  = cls[q.type];
+
+  let mainPill;
   if (q.gap === null) {
     const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
-    return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
+  } else if (q.gap === 0) {
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
+  } else {
+    const rankStr = q.rank != null ? ` <span style="opacity:.5">(rank ${q.rank})</span>` : '';
+    mainPill = `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
   }
-  if (q.gap === 0) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
-  const rankStr = q.rank != null ? ` <span style="opacity:.5">(rank ${q.rank})</span>` : '';
-  return `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
+
+  // P4 rank hint for players not yet in playoffs
+  let p4Hint = '';
+  if (q.type !== 'seed' && q.type !== 'top' && predPP != null) {
+    const r = p4RankNeeded(predPP);
+    if (r === null && predPP >= PLAYOFFS_TARGET_PP) {
+      p4Hint = `<br><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--accent);opacity:.6">on track for playoffs next phase</span>`;
+    } else if (r !== null) {
+      p4Hint = `<br><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted)">need ~rank ${r} in P4 for playoffs</span>`;
+    }
+  }
+
+  return mainPill + p4Hint;
 }
 
 function fmtAgo(unixSec) {
@@ -798,7 +827,7 @@ function renderTable() {
       <td class="num"><span class="pp-gain">+${u.gain}</span></td>
       <td class="num"><span class="mono" style="font-weight:500;color:${eloColor(u.eloRate)}">${u.eloRate ?? '—'}</span></td>
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
-      <td>${qualPill(u.qualData)}</td>
+      <td>${qualPill(u.qualData, u.predPP)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
     </tr>`;
 
