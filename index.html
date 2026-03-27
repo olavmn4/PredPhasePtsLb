@@ -885,7 +885,7 @@ let tsHistory = {};
 
 async function loadServerHistory() {
   try {
-    const r = await fetch('/PredPhasePtsLb/history.json');
+    const r = await fetch(`/PredPhasePtsLb/history.json?t=${Date.now()}`);
     const data = await r.json();
     if (Array.isArray(data)) {
       serverSnapshots = data;
@@ -1043,7 +1043,6 @@ function renderModalStats(data, row) {
     { label:'losses (S10)', value: losses },
     { label:'win rate', value: wr + '%' },
     { label:'completions', value: completions },
-    { label:'comp rate', value: compRate + '%' },
     { label:'best time (S10)', value: fmtTime(s?.bestTime?.ranked) },
     { label:'avg comp time', value: avgTime },
     { label:'win streak', value: s?.currentWinStreak?.ranked ?? 0 },
