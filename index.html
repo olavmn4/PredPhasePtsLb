@@ -426,6 +426,8 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script>
 const PP_TABLE = [
   [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
@@ -526,6 +528,8 @@ function fmtCountdown(ts) {
   return `phase ends in <strong>${mins}m</strong>`;
 }
 
+const HIDDEN_PLAYERS = new Set(['KenanKardes','Watermelon1708','nyachloe','Hinart']);
+
 function buildMerged() {
   const eloMap = {};
   for (const u of rawElo) eloMap[u.uuid] = { eloRate: u.eloRate, eloRank: u.eloRank };
@@ -534,7 +538,9 @@ function buildMerged() {
   const eloSorted = [...rawElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
   eloSorted.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
 
-  const sorted = [...rawPhase].sort((a,b) =>
+  const sorted = [...rawPhase]
+    .filter(u => !HIDDEN_PLAYERS.has(u.nickname))
+    .sort((a,b) =>
     b.predPhasePoint - a.predPhasePoint || a.eloRank - b.eloRank
   );
 
@@ -551,7 +557,7 @@ function buildMerged() {
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
   const zeroPPPlayers = rawElo
-    .filter(u => !phaseUuids.has(u.uuid))
+    .filter(u => !phaseUuids.has(u.uuid) && !HIDDEN_PLAYERS.has(u.nickname))
     .map(u => ({
       uuid: u.uuid,
       nickname: u.nickname,
@@ -667,7 +673,7 @@ function qualPill(q) {
   const label  = labels[q.type];
   const klass  = cls[q.type];
   if (q.gap === null) {
-    const msg = q.type === 'seed' ? 'out of your hands' : 'unreachable this phase';
+    const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
     return `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   }
   if (q.gap === 0) return `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
@@ -1377,15 +1383,79 @@ function renderHistoryChart() {
     };
   });
 
+let frozenDatasetIndex = null;
+
+function updateLegendHighlight(activeIdx) {
+  document.querySelectorAll('.hist-legend-item').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    el.style.opacity = activeIdx === null || idx === activeIdx ? '1' : '0.3';
+    el.style.fontWeight = idx === activeIdx ? '600' : '';
+  });
+}
+
+function renderHistoryChart() {
+  const wrap   = document.getElementById('history-chart-wrap');
+  const canvas = document.getElementById('history-canvas');
+  const legend = document.getElementById('history-legend');
+  const empty  = document.getElementById('history-empty');
+
+  const allHist = Object.entries(tsHistory);
+  if (!allHist.length || allHist.every(([,h]) => h.length < 2)) {
+    empty.style.display = 'flex'; wrap.style.display = 'none';
+    if (historyChart) { historyChart.destroy(); historyChart = null; }
+    return;
+  }
+
+  const phasePlayers = mergedData.filter(u => !u._isZeroPP);
+  const lcqThresholdPP = phasePlayers.length >= 100 ? phasePlayers[99]?.predPP : null;
+
+  let included = allHist.filter(([uuid]) => {
+    const u = mergedData.find(x => x.uuid === uuid);
+    if (!u) return false;
+    if (historyMode === 'top12') return u.ppRk <= 12;
+    return lcqThresholdPP !== null ? u.predPP >= lcqThresholdPP : u.ppRk <= 100;
+  });
+
+  included.sort(([uuidA], [uuidB]) => {
+    const a = mergedData.find(x => x.uuid === uuidA)?.ppRk ?? 999;
+    const b = mergedData.find(x => x.uuid === uuidB)?.ppRk ?? 999;
+    return a - b;
+  });
+
+  if (!included.length) {
+    empty.style.display = 'flex'; wrap.style.display = 'none';
+    if (historyChart) { historyChart.destroy(); historyChart = null; }
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display = 'flex';
+  canvas.style.display = 'block';
+  if (historyChart) { historyChart.destroy(); historyChart = null; }
+  frozenDatasetIndex = null;
+
+  const allTs = [...new Set(included.flatMap(([,h]) => h.map(p => p.t)))].sort((a,b)=>a-b);
+  const labels = allTs.map(t => fmtAxisTime(t));
   const isTop12 = historyMode === 'top12';
 
-  legend.style.display = isTop12 ? 'block' : 'block'; // always show
-  legend.innerHTML = datasets.map(ds => {
+  const datasets = included.map(([uuid, hist]) => {
+    const u = mergedData.find(x => x.uuid === uuid);
+    let lastRk = null;
+    const data = allTs.map(t => {
+      const pt = [...hist].reverse().find(p => p.t <= t);
+      if (pt) lastRk = pt.ppRk;
+      return lastRk ?? null;
+    });
+    return { label: u?.nickname ?? uuid.slice(0,8), data, borderColor: playerColor(uuid), backgroundColor: 'rgba(0,0,0,0)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, tension: 0.1, fill: false, uuid };
+  });
+
+  legend.style.display = 'block';
+  legend.innerHTML = datasets.map((ds, i) => {
     const u = mergedData.find(x => x.uuid === ds.uuid);
     const helmUrl = `https://minotar.net/helm/${ds.uuid.replace(/-/g,'')}/16`;
-    return `<div class="hist-legend-item">
+    return `<div class="hist-legend-item" data-idx="${i}" style="cursor:pointer;transition:opacity .15s">
       <div class="hist-legend-swatch" style="background:${ds.borderColor}"></div>
-      ${isTop12 ? `<img src="${helmUrl}" width="14" height="14" style="image-rendering:pixelated;border-radius:0;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+      ${`<img src="${helmUrl}" width="14" height="14" style="image-rendering:pixelated;border-radius:0;flex-shrink:0" onerror="this.style.display='none'">`}
       <span>${esc(u?.nickname ?? ds.label)}</span>
     </div>`;
   }).join('');
@@ -1396,8 +1466,6 @@ function renderHistoryChart() {
     afterDraw(chart) {
       if (!isTop12) return;
       const ctx2 = chart.ctx;
-      ctx2.save();
-      ctx2.restore();
       chart.data.datasets.forEach((ds, i) => {
         const meta = chart.getDatasetMeta(i);
         let lastPoint = null;
@@ -1405,9 +1473,7 @@ function renderHistoryChart() {
           if (ds.data[j] != null) { lastPoint = meta.data[j]; break; }
         }
         if (!lastPoint) return;
-        const uuid = ds.uuid;
-        if (!uuid) return;
-        const img = helmImageCache[uuid];
+        const img = helmImageCache[ds.uuid];
         if (!img || !img.complete) return;
         ctx2.drawImage(img, lastPoint.x + 4, lastPoint.y - HELM_SIZE / 2, HELM_SIZE, HELM_SIZE);
       });
@@ -1423,6 +1489,16 @@ function renderHistoryChart() {
     }
   });
 
+  function applyHighlight(activeIdx) {
+    historyChart.data.datasets.forEach((ds, i) => {
+      const isActive = activeIdx === null || i === activeIdx;
+      ds.borderWidth = i === activeIdx ? 3 : activeIdx === null ? 1.5 : 0.4;
+      ds.borderColor = isActive ? playerColor(ds.uuid) : playerColor(ds.uuid) + '44';
+    });
+    historyChart.update('none');
+    updateLegendHighlight(activeIdx);
+  }
+
   const opts = chartBaseOpts();
   historyChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -1433,17 +1509,51 @@ function renderHistoryChart() {
       layout: { padding: { right: isTop12 ? 28 : 0 } },
       plugins: {
         ...opts.plugins,
-        legend: { display: false }, // we use our custom side legend
+        legend: { display: false },
         tooltip: { ...opts.plugins.tooltip, callbacks: {
           title: i => labels[i[0].dataIndex],
           label: i => ` ${i.dataset.label}: #${i.raw}`,
         }},
+        zoom: !isTop12 ? {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan:  { enabled: true, mode: 'x' },
+        } : {},
+      },
+      onHover: (event, elements) => {
+        if (frozenDatasetIndex !== null) return;
+        applyHighlight(elements.length ? elements[0].datasetIndex : null);
+      },
+      onClick: (event, elements) => {
+        if (!elements.length) {
+          frozenDatasetIndex = null;
+          applyHighlight(null);
+          return;
+        }
+        const idx = elements[0].datasetIndex;
+        frozenDatasetIndex = frozenDatasetIndex === idx ? null : idx;
+        applyHighlight(frozenDatasetIndex);
       },
       scales: {
         ...opts.scales,
         y: { ...opts.scales.y, reverse: true, ticks: { ...opts.scales.y.ticks, callback: v => `#${v}` } },
       },
     },
+  });
+
+  legend.querySelectorAll('.hist-legend-item').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    el.addEventListener('mouseenter', () => {
+      if (frozenDatasetIndex !== null) return;
+      applyHighlight(idx);
+    });
+    el.addEventListener('mouseleave', () => {
+      if (frozenDatasetIndex !== null) return;
+      applyHighlight(null);
+    });
+    el.addEventListener('click', () => {
+      frozenDatasetIndex = frozenDatasetIndex === idx ? null : idx;
+      applyHighlight(frozenDatasetIndex);
+    });
   });
 }
 
