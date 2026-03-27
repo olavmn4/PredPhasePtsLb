@@ -439,6 +439,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script>
@@ -1445,20 +1446,18 @@ function renderHistoryChart() {
   if (historyChart) { historyChart.destroy(); historyChart = null; }
   frozenDatasetIndex = null;
 
-  const allTs = [...new Set(included.flatMap(([,h]) => h.map(p => p.t)))].sort((a,b)=>a-b);
-  const labels = allTs.map(t => fmtAxisTime(t));
+  // Limit to last 7 days
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
   const isTop12 = historyMode === 'top12';
 
   const datasets = included.map(([uuid, hist]) => {
     const u = mergedData.find(x => x.uuid === uuid);
-    let lastRk = null;
-    const data = allTs.map(t => {
-      const pt = [...hist].reverse().find(p => p.t <= t);
-      if (pt) lastRk = pt.ppRk;
-      return lastRk ?? null;
-    });
+    // Only include points within last 7 days, using { x: ms, y: rank } format
+    const recentHist = hist.filter(p => p.t >= sevenDaysAgo);
+    if (!recentHist.length) return null;
+    const data = recentHist.map(p => ({ x: p.t * 1000, y: p.ppRk }));
     return { label: u?.nickname ?? uuid.slice(0,8), data, borderColor: playerColor(uuid), backgroundColor: 'rgba(0,0,0,0)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, tension: 0.1, fill: false, uuid };
-  });
+  }).filter(Boolean);
 
   legend.style.display = 'block';
   legend.innerHTML = datasets.map((ds, i) => {
@@ -1527,8 +1526,7 @@ function renderHistoryChart() {
         ...opts.plugins,
         legend: { display: false },
         tooltip: { ...opts.plugins.tooltip, callbacks: {
-          title: i => labels[i[0].dataIndex],
-          label: i => ` ${i.dataset.label}: #${i.raw}`,
+          label: i => ` ${i.dataset.label}: #${i.parsed.y}`,
         }},
         zoom: !isTop12 ? {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' },
@@ -1551,6 +1549,12 @@ function renderHistoryChart() {
       },
       scales: {
         ...opts.scales,
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } },
+          ticks: { ...opts.scales.x?.ticks, color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
+          grid: { color: '#1e2022' },
+        },
         y: { ...opts.scales.y, reverse: true, ticks: { ...opts.scales.y.ticks, callback: v => `#${v}` } },
       },
     },
