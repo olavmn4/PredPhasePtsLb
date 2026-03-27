@@ -1349,9 +1349,10 @@ function renderHistoryChart() {
     return lcqThresholdPP !== null ? u.predPP >= lcqThresholdPP : u.ppRk <= 100;
   });
 
-  included.sort(([uuidA], [uuidB]) => {
-    const a = mergedData.find(x => x.uuid === uuidA)?.ppRk ?? 999;
-    const b = mergedData.find(x => x.uuid === uuidB)?.ppRk ?? 999;
+  included.sort(([uuidA, histA], [uuidB, histB]) => {
+    const getLatestRk = (hist) => [...hist].reverse().find(p => p.ppRk != null)?.ppRk ?? 999;
+    const a = mergedData.find(x => x.uuid === uuidA)?.ppRk ?? getLatestRk(histA);
+    const b = mergedData.find(x => x.uuid === uuidB)?.ppRk ?? getLatestRk(histB);
     return a - b;
   });
 
@@ -1393,7 +1394,7 @@ function renderHistoryChart() {
     </div>`;
   }).join('');
 
-  const HELM_SIZE = 20;
+  const HELM_SIZE = 18;
   const helmPlugin = {
     id: 'helmEndpoints',
     afterDraw(chart) {
@@ -1408,7 +1409,10 @@ function renderHistoryChart() {
         if (!lastPoint) return;
         const img = helmImageCache[ds.uuid];
         if (!img || !img.complete) return;
-        ctx2.drawImage(img, lastPoint.x + 4, lastPoint.y - HELM_SIZE / 2, HELM_SIZE, HELM_SIZE);
+        ctx2.save();
+        ctx2.imageSmoothingEnabled = false;
+        ctx2.drawImage(img, Math.round(lastPoint.x + 4), Math.round(lastPoint.y - HELM_SIZE / 2), HELM_SIZE, HELM_SIZE);
+        ctx2.restore();
       });
     },
   };
@@ -1416,7 +1420,7 @@ function renderHistoryChart() {
   datasets.forEach(ds => {
     if (ds.uuid && !helmImageCache[ds.uuid]) {
       const img = new Image();
-      img.src = `https://minotar.net/helm/${ds.uuid.replace(/-/g,'')}/16`;
+      img.src = `https://minotar.net/helm/${ds.uuid.replace(/-/g,'')}/18`;
       img.onload = () => { if (historyChart) historyChart.draw(); };
       helmImageCache[ds.uuid] = img;
     }
