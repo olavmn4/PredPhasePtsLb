@@ -1100,7 +1100,10 @@ function renderQualPath(row) {
       for (let r4 = 100; r4 >= 1; r4--) {
         if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
       }
-      if (!worstP4) worstP4 = 'unreachable';
+      if (!worstP4) {
+        if (r3 !== currentP3Rank) continue;
+        worstP4 = 'unreachable';
+      }
     }
     rows.push({ r3, ppAfterP3, worstP4, isCurrent: r3 === currentP3Rank });
   }
