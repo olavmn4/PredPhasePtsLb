@@ -469,11 +469,11 @@ const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1][4] : 0;
 
 function p4RankNeeded(currentPredPP) {
   const needed = PLAYOFFS_TARGET_PP - currentPredPP;
-  if (needed <= 0) return null; // already there
-  for (let r = 1; r <= 100; r++) {
+  if (needed <= 0) return null;
+  for (let r = 100; r >= 1; r--) {
     if (p4Points(r) >= needed) return r;
   }
-  return null; // unreachable even at rank 1
+  return null;
 }
 
 
@@ -685,29 +685,28 @@ function qualPill(q, predPP) {
   const label  = labels[q.type];
   const klass  = cls[q.type];
 
-  let mainPill;
-  if (q.gap === null) {
-    const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
-    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
-  } else if (q.gap === 0) {
-    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
-  } else {
-    const rankStr = q.rank != null ? ` <span style="opacity:.5">(rank ${q.rank})</span>` : '';
-    mainPill = `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
-  }
-
-  // P4 rank hint for players not yet in playoffs
   let p4Hint = '';
   if (q.type !== 'seed' && q.type !== 'top' && predPP != null) {
     const r = p4RankNeeded(predPP);
     if (r === null && predPP >= PLAYOFFS_TARGET_PP) {
-      p4Hint = `<br><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--accent);opacity:.6">on track for playoffs next phase</span>`;
-    } else if (r !== null) {
-      p4Hint = `<br><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted)">need ~rank ${r} in P4 for playoffs</span>`;
+      p4Hint = ` <span style="opacity:.45;font-size:9px">· on track P4</span>`;
+    } else if (r !== null && r <= 30) {
+      p4Hint = ` <span style="opacity:.45;font-size:9px">· ~P4 rank ${r}</span>`;
     }
   }
 
-  return mainPill + p4Hint;
+  let mainPill;
+  if (q.gap === null) {
+    const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span>${p4Hint}</span>`;
+  } else if (q.gap === 0) {
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span>${p4Hint}</span>`;
+  } else {
+    const rankStr = q.rank != null ? ` <span style="opacity:.5">(rank ${q.rank})</span>` : '';
+    mainPill = `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}${p4Hint}</span>`;
+  }
+
+  return mainPill;
 }
 
 function fmtAgo(unixSec) {
