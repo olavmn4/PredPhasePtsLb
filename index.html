@@ -305,6 +305,7 @@
       <button class="filter-btn" data-filter="top12">top 12</button>
       <button class="filter-btn" data-filter="top100">top 100</button>
       <input class="search-input" id="main-search" placeholder="search player…" autocomplete="off">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:4px">click a player for stats</span>
     </div>
     <div class="table-wrap">
       <div class="state-msg" id="main-loading"><div class="spinner"></div>fetching leaderboard…</div>
@@ -1087,45 +1088,46 @@ function renderQualPath(row) {
   const p3Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
   const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
 
-  // For each plausible P3 rank (show current ±5 ranks and a few key ones)
-  const p3Ranks = [...new Set([
-    Math.max(1, currentP3Rank - 5),
-    Math.max(1, currentP3Rank - 3),
-    Math.max(1, currentP3Rank - 1),
-    currentP3Rank,
-    Math.min(100, currentP3Rank + 1),
-    Math.min(100, currentP3Rank + 3),
-    Math.min(100, currentP3Rank + 5),
-  ])].sort((a,b) => a - b);
-
-  const rows = p3Ranks.map(r3 => {
+  const rows = [];
+  for (let r3 = 1; r3 <= 100; r3++) {
     const ppAfterP3 = currentPP + p3Pts(r3);
     const needed = PLAYOFFS_TARGET - ppAfterP3;
-    let worstP4 = null;
+    let worstP4;
     if (needed <= 0) {
-      worstP4 = '✓ already there';
+      worstP4 = '✓ qualified';
     } else {
+      worstP4 = null;
       for (let r4 = 100; r4 >= 1; r4--) {
         if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
       }
       if (!worstP4) worstP4 = 'unreachable';
     }
-    return { r3, ppAfterP3, worstP4, isCurrent: r3 === currentP3Rank };
-  });
+    rows.push({ r3, ppAfterP3, worstP4, isCurrent: r3 === currentP3Rank });
+  }
 
   el.innerHTML = `
-    <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts)</div>
-    <table class="qual-path-table">
-      <thead><tr><th>P3 elo rank</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr></thead>
-      <tbody>${rows.map(r => `
-        <tr class="${r.isCurrent ? 'current-row' : ''}">
-          <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
-          <td>${r.ppAfterP3}</td>
-          <td>${r.worstP4}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
+    <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts) — your current P3 rank highlighted</div>
+    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
+      <table class="qual-path-table" style="width:100%">
+        <thead style="position:sticky;top:0;background:var(--bg2)">
+          <tr><th>P3 elo rank</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr>
+        </thead>
+        <tbody id="qual-path-tbody">${rows.map(r => `
+          <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
+            <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
+            <td>${r.ppAfterP3}</td>
+            <td>${r.worstP4}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
   el.classList.add('visible');
+
+  // Scroll to current rank row
+  setTimeout(() => {
+    const cur = document.getElementById('qual-path-current');
+    if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, 50);
 }
 
 function renderLastMatch(uuid, match) {
