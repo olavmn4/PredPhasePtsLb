@@ -210,7 +210,7 @@
   #modal-flag { font-size: 18px; }
   #modal-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
   #modal-sub span { display: flex; align-items: center; gap: 4px; }
-  #modal-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 1px; margin-bottom: 16px; background: var(--border); border: 1px solid var(--border); }
+  #modal-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-bottom: 16px; background: var(--border); border: 1px solid var(--border); }
   .stat-card { background: var(--bg3); padding: 8px 10px; }
   .stat-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
   .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: var(--text); }
@@ -463,18 +463,6 @@ document.getElementById('pp-ref-tbody').innerHTML =
     `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td class="cur-phase">${p3}</td><td>${p4}</td></tr>`
   ).join('');
 
-const PLAYOFFS_TARGET_PP = 159; // estimated pts needed for playoffs — adjust if cutoff changes
-
-const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1][4] : 0;
-
-function p4RankNeeded(currentPredPP) {
-  const needed = PLAYOFFS_TARGET_PP - currentPredPP;
-  if (needed <= 0) return null;
-  for (let r = 100; r >= 1; r--) {
-    if (p4Points(r) >= needed) return r;
-  }
-  return null;
-}
 
 
 let rawElo      = [];
@@ -677,7 +665,7 @@ function phaseMoveCell(v) {
   return `<span style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500">▼${Math.abs(v)}</span>`;
 }
 
-function qualPill(q, predPP) {
+function qualPill(q) {
   if (!q) return '';
   if (q.type === 'top') return `<span class="qual-top">—</span>`;
   const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:'↑ seed' };
@@ -685,25 +673,15 @@ function qualPill(q, predPP) {
   const label  = labels[q.type];
   const klass  = cls[q.type];
 
-  let p4Hint = '';
-  if (q.type !== 'seed' && q.type !== 'top' && predPP != null) {
-    const r = p4RankNeeded(predPP);
-    if (r === null && predPP >= PLAYOFFS_TARGET_PP) {
-      p4Hint = ` <span style="opacity:.45;font-size:9px">· on track P4</span>`;
-    } else if (r !== null && r <= 30) {
-      p4Hint = ` <span style="opacity:.45;font-size:9px">· ~P4 rank ${r}</span>`;
-    }
-  }
-
   let mainPill;
   if (q.gap === null) {
     const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
-    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span>${p4Hint}</span>`;
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   } else if (q.gap === 0) {
-    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span>${p4Hint}</span>`;
+    mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
   } else {
     const rankStr = q.rank != null ? ` <span style="opacity:.5">(rank ${q.rank})</span>` : '';
-    mainPill = `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}${p4Hint}</span>`;
+    mainPill = `<span class="qual-pill ${klass}">${label} +${q.gap} elo${rankStr}</span>`;
   }
 
   return mainPill;
@@ -826,7 +804,7 @@ function renderTable() {
       <td class="num"><span class="pp-gain">+${u.gain}</span></td>
       <td class="num"><span class="mono" style="font-weight:500;color:${eloColor(u.eloRate)}">${u.eloRate ?? '—'}</span></td>
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
-      <td>${qualPill(u.qualData, u.predPP)}</td>
+      <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
     </tr>`;
 
