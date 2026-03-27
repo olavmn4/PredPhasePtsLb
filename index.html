@@ -1488,7 +1488,9 @@ function renderHistoryChart() {
         if (!img || !img.complete) return;
         ctx2.save();
         ctx2.imageSmoothingEnabled = false;
-        ctx2.drawImage(img, Math.round(lastPoint.x + 4), Math.round(lastPoint.y - HELM_SIZE / 2), HELM_SIZE, HELM_SIZE);
+        const size = HELM_SIZE;
+        ctx2.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight,
+          Math.round(lastPoint.x + 4), Math.round(lastPoint.y - size / 2), size, size);
         ctx2.restore();
       });
     },
@@ -1529,8 +1531,8 @@ function renderHistoryChart() {
           label: i => ` ${i.dataset.label}: #${i.raw}`,
         }},
         zoom: !isTop12 ? {
-          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          pan:  { enabled: true, mode: 'x' },
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' },
+          pan:  { enabled: true, mode: 'y' },
         } : {},
       },
       onHover: (event, elements) => {
