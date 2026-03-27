@@ -308,7 +308,7 @@
             <th data-col="gain" class="num">+gain<span class="sort-icon">↕</span></th>
             <th data-col="elo" class="num">elo<span class="sort-icon">↕</span></th>
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
-            <th class="no-sort">to qualify <span id="qual-info" title="'need ~rank X in P4' estimates the Elo rank needed in Phase 4 to reach ~159 pts — the historical playoffs cutoff. Approximate." style="cursor:help;opacity:.45;font-size:10px">?</span></th>
+            <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
           </tr>
         </thead>
@@ -789,7 +789,7 @@ function renderTable() {
     const f   = flag(u.country);
 
     html += `<tr data-uuid="${u.uuid}">
-      <td class="num"><span class="rank-num ${rankCls(idx+1)}">${idx+1}</span></td>
+      <td class="num"><span class="rank-num ${rankCls(u.ppRk)}">${u.ppRk}</span></td>
       <td style="width:52px">${phaseMoveCell(u.phaseMove)}</td>
       <td>
         <div class="player-cell">
