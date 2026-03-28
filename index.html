@@ -1510,9 +1510,8 @@ function renderHistoryChart() {
   function applyHighlight(activeIdx) {
     if (!historyChart) return;
     historyChart.data.datasets.forEach((ds, i) => {
-      const isActive = activeIdx === null || i === activeIdx;
       ds.borderWidth = i === activeIdx ? 3 : activeIdx === null ? 1.5 : 0.4;
-      ds.borderColor = isActive ? playerColor(ds.uuid) : playerColor(ds.uuid) + '44';
+      ds.borderColor = (activeIdx === null || i === activeIdx) ? playerColor(ds.uuid) : playerColor(ds.uuid) + '44';
     });
     historyChart.update('none');
     updateLegendHighlight(activeIdx);
@@ -1526,38 +1525,21 @@ function renderHistoryChart() {
     options: {
       ...opts,
       layout: { padding: { right: isTop12 ? 28 : 0 } },
-      interaction: { mode: 'index', intersect: false },
       plugins: {
         ...opts.plugins,
         legend: { display: false },
-        tooltip: { ...opts.plugins.tooltip, mode: 'nearest', intersect: false, callbacks: {
-          label: i => ` ${i.dataset.label}: #${i.parsed.y}`,
-        }},
+        tooltip: { enabled: false },
         zoom: !isTop12 ? {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' },
           pan:  { enabled: true, mode: 'y' },
         } : {},
-      },
-      onHover: (event, elements) => {
-        if (frozenDatasetIndex !== null) return;
-        applyHighlight(elements.length ? elements[0].datasetIndex : null);
-      },
-      onClick: (event, elements) => {
-        if (!elements.length) {
-          frozenDatasetIndex = null;
-          applyHighlight(null);
-          return;
-        }
-        const idx = elements[0].datasetIndex;
-        frozenDatasetIndex = frozenDatasetIndex === idx ? null : idx;
-        applyHighlight(frozenDatasetIndex);
       },
       scales: {
         ...opts.scales,
         x: {
           type: 'time',
           time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } },
-          ticks: { ...opts.scales.x?.ticks, color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
+          ticks: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
           grid: { color: '#1e2022' },
         },
         y: { ...opts.scales.y, reverse: true, ticks: { ...opts.scales.y.ticks, callback: v => `#${v}` } },
@@ -1565,16 +1547,70 @@ function renderHistoryChart() {
     },
   });
 
+  // Hover: find nearest dataset to mouse position by y-distance
+  canvas.addEventListener('mousemove', e => {
+    if (frozenDatasetIndex !== null) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseY = e.clientY - rect.top;
+    const mouseX = e.clientX - rect.left;
+    const chart = historyChart;
+    if (!chart) return;
+
+    let closest = null;
+    let closestDist = 30; // max px distance to trigger highlight
+
+    chart.data.datasets.forEach((ds, i) => {
+      const meta = chart.getDatasetMeta(i);
+      meta.data.forEach(pt => {
+        const dx = pt.x - mouseX;
+        const dy = pt.y - mouseY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < closestDist) { closestDist = dist; closest = i; }
+      });
+    });
+
+    applyHighlight(closest);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (frozenDatasetIndex !== null) return;
+    applyHighlight(null);
+  });
+
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseY = e.clientY - rect.top;
+    const mouseX = e.clientX - rect.left;
+    const chart = historyChart;
+    if (!chart) return;
+
+    let closest = null;
+    let closestDist = 30;
+
+    chart.data.datasets.forEach((ds, i) => {
+      const meta = chart.getDatasetMeta(i);
+      meta.data.forEach(pt => {
+        const dx = pt.x - mouseX;
+        const dy = pt.y - mouseY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < closestDist) { closestDist = dist; closest = i; }
+      });
+    });
+
+    if (closest === null) {
+      frozenDatasetIndex = null;
+      applyHighlight(null);
+    } else {
+      frozenDatasetIndex = frozenDatasetIndex === closest ? null : closest;
+      applyHighlight(frozenDatasetIndex);
+    }
+  });
+
+  // Legend interactions
   legend.querySelectorAll('.hist-legend-item').forEach(el => {
     const idx = parseInt(el.dataset.idx);
-    el.addEventListener('mouseenter', () => {
-      if (frozenDatasetIndex !== null) return;
-      applyHighlight(idx);
-    });
-    el.addEventListener('mouseleave', () => {
-      if (frozenDatasetIndex !== null) return;
-      applyHighlight(null);
-    });
+    el.addEventListener('mouseenter', () => { if (frozenDatasetIndex !== null) return; applyHighlight(idx); });
+    el.addEventListener('mouseleave', () => { if (frozenDatasetIndex !== null) return; applyHighlight(null); });
     el.addEventListener('click', () => {
       frozenDatasetIndex = frozenDatasetIndex === idx ? null : idx;
       applyHighlight(frozenDatasetIndex);
