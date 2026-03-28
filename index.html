@@ -1402,6 +1402,14 @@ const playerColor = (() => {
   return uuid => { if (!map[uuid]) map[uuid] = HISTORY_PALETTE[i++ % HISTORY_PALETTE.length]; return map[uuid]; };
 })();
 
+function updateLegendHighlight(activeIdx) {
+  document.querySelectorAll('.hist-legend-item').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    el.style.opacity = activeIdx === null || idx === activeIdx ? '1' : '0.3';
+    el.style.fontWeight = idx === activeIdx ? '600' : '';
+  });
+}
+
 function renderHistoryChart() {
   const wrap   = document.getElementById('history-chart-wrap');
   const canvas = document.getElementById('history-canvas');
