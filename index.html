@@ -1272,27 +1272,21 @@ function renderChart(uuid, type, row) {
     });
 
   } else if (type === 'gap') {
-    const hist = tsHistory[uuid] ?? [];
-    const labels = hist.map(p => fmtAxisTime(p.t));
-    const data   = hist.map(p => p.qualGap ?? null);
-
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
+    const hist = (tsHistory[uuid] ?? []).filter(p => p.t >= sevenDaysAgo);
+    const data = hist.map(p => ({ x: p.t * 1000, y: p.qualGap ?? null }));
     const pointColors = hist.map(p =>
-      p.qualType === 'lcq_to_po' ? '#60a5fa' :   // in LCQ, targeting playoffs
-      p.qualType === 'lcq'       ? '#fbbf24' :   // targeting LCQ
-      p.qualType === 'top'       ? '#4ade80' :
-                                   '#4ade80'      // in playoffs, targeting seed-up
+      p.qualType === 'lcq_to_po' ? '#60a5fa' :
+      p.qualType === 'lcq'       ? '#fbbf24' :
+                                   '#4ade80'
     );
 
     modalChart = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: [{
+      data: { datasets: [{
         data,
-        borderColor: ctx => {
-          return pointColors[ctx.p1DataIndex] ?? '#4ade80';
-        },
-        segment: {
-          borderColor: ctx => pointColors[ctx.p1DataIndex] ?? '#4ade80',
-        },
+        borderColor: ctx => pointColors[ctx.p1DataIndex] ?? '#4ade80',
+        segment: { borderColor: ctx => pointColors[ctx.p1DataIndex] ?? '#4ade80' },
         backgroundColor: 'rgba(96,165,250,.04)',
         borderWidth: 2,
         pointBackgroundColor: pointColors,
@@ -1303,26 +1297,29 @@ function renderChart(uuid, type, row) {
         plugins: { ...opts.plugins,
           legend: { display: false },
           tooltip: { ...opts.plugins.tooltip, callbacks: {
-            title: i => labels[i[0].dataIndex],
             label: i => {
               const p = hist[i.dataIndex];
-              const target = p.qualType === 'lcq_to_po' ? '→ Playoffs' : p.qualType === 'lcq' ? '→ LCQ' : '↑ seed';
-              return ` ${target}: +${i.raw ?? 0} elo needed`;
+              const target = p?.qualType === 'lcq_to_po' ? '→ Playoffs' : p?.qualType === 'lcq' ? '→ LCQ' : '↑ seed';
+              return ` ${target}: +${i.parsed.y ?? 0} elo needed`;
             },
           }},
         },
-        scales: { ...opts.scales, y: { ...opts.scales.y, beginAtZero: true } },
+        scales: {
+          ...opts.scales,
+          x: { type: 'time', time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } }, ticks: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 }, grid: { color: '#1e2022' } },
+          y: { ...opts.scales.y, beginAtZero: true },
+        },
       },
     });
 
   } else if (type === 'pprank') {
-    const hist = tsHistory[uuid] ?? [];
-    const labels = hist.map(p => fmtAxisTime(p.t));
-    const data   = hist.map(p => p.ppRk ?? null);
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
+    const hist = (tsHistory[uuid] ?? []).filter(p => p.t >= sevenDaysAgo);
+    const data = hist.map(p => ({ x: p.t * 1000, y: p.ppRk ?? null }));
 
     modalChart = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: [{
+      data: { datasets: [{
         data,
         borderColor: '#a78bfa',
         backgroundColor: 'rgba(167,139,250,.06)',
@@ -1331,12 +1328,13 @@ function renderChart(uuid, type, row) {
       options: {
         ...opts,
         plugins: { ...opts.plugins, tooltip: { ...opts.plugins.tooltip, callbacks: {
-          title: i => labels[i[0].dataIndex],
-          label: i => ` pred PP rank #${i.raw}`,
+          label: i => ` pred PP rank #${i.parsed.y}`,
         }}},
-        scales: { ...opts.scales, y: { ...opts.scales.y, reverse: true, ticks: { ...opts.scales.y.ticks,
-          callback: v => `#${v}`,
-        }}},
+        scales: {
+          ...opts.scales,
+          x: { type: 'time', time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } }, ticks: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 }, grid: { color: '#1e2022' } },
+          y: { ...opts.scales.y, reverse: true, ticks: { ...opts.scales.y.ticks, callback: v => `#${v}` } },
+        },
       },
     });
 
