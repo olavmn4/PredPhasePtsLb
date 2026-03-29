@@ -102,7 +102,7 @@
   .search-input:focus { border-color: #2e3236; }
 
   /* ── Table ── */
-  .table-wrap { border: 1px solid var(--border); border-radius: 0; overflow: hidden; }
+  .table-wrap { border: 1px solid var(--border); border-radius: 0; overflow-x: auto; overflow-y: hidden; }
   table { width: 100%; border-collapse: collapse; }
   thead { background: var(--bg2); border-bottom: 1px solid var(--border); }
   th {
@@ -760,14 +760,14 @@ async function fetchExtraStats() {
   if (extraStatsFetching) return;
   extraStatsFetching = true;
   const counter = document.getElementById('extra-stats-counter');
-  const players = mergedData.filter(u => !u._isZeroPP);
+  const players = mergedData; // include ALL players including zero PP
   let loaded = Object.keys(extraStatsCache).length;
   const total = players.length;
   counter.style.display = 'inline';
   counter.textContent = `loading ${loaded}/${total}`;
 
   for (const u of players) {
-    if (extraStatsCache[u.uuid]) continue;
+    if (extraStatsCache[u.uuid]) { loaded++; counter.textContent = `loading ${loaded}/${total}`; continue; }
     try {
       const r = await fetch(`https://api.mcsrranked.com/users/${u.uuid}`);
       const j = await r.json();
@@ -779,9 +779,7 @@ async function fetchExtraStats() {
         const completions = s?.completions?.ranked ?? 0;
         extraStatsCache[u.uuid] = {
           winRate: total_m > 0 ? (wins / total_m * 100) : null,
-          wins,
-          losses,
-          completions,
+          wins, losses, completions,
           bestTime: s?.bestTime?.ranked ?? null,
           avgTime: completions > 0 && s?.completionTime?.ranked ? Math.round(s.completionTime.ranked / completions) : null,
           winStreak: s?.currentWinStreak?.ranked ?? 0,
@@ -790,9 +788,10 @@ async function fetchExtraStats() {
     } catch {}
     loaded++;
     counter.textContent = `loading ${loaded}/${total}`;
-    renderTable();
-    await new Promise(r => setTimeout(r, 100));
+    if (loaded % 5 === 0) renderTable(); // re-render every 5 players instead of every 1
+    await new Promise(r => setTimeout(r, 25)); // 25ms = ~4x faster
   }
+  renderTable();
   counter.textContent = `${total} loaded`;
   extraStatsFetching = false;
 }
@@ -807,11 +806,19 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
   document.querySelectorAll('.threshold-colspan').forEach(el => {
     el.colSpan = extraStatsOn ? 17 : 10;
   });
-  if (extraStatsOn && !extraStatsFetching && Object.keys(extraStatsCache).length < mergedData.filter(u => !u._isZeroPP).length) {
+  if (extraStatsOn && !extraStatsFetching && Object.keys(extraStatsCache).length < mergedData.length) {
     fetchExtraStats();
   }
   renderTable();
 });
+
+function extraStatCell(uuid, key, fmt = v => v) {
+  const s = extraStatsCache[uuid];
+  const style = 'font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--muted)';
+  if (!s) return `<span style="${style}">…</span>`;
+  const v = s[key];
+  return `<span style="${style}">${v != null ? fmt(v) : '—'}</span>`;
+}
 
 function getRows() {
   let d = [...mergedData];
@@ -891,20 +898,13 @@ function renderTable() {
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
       <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
-      ${extraStatsOn ? (() => {
-        const s = extraStatsCache[u.uuid];
-        const m = `style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)"`;
-        if (!s) return `<td class="num extra-col"><span ${m}>…</span></td>`.repeat(7);
-        return `
-          <td class="num extra-col"><span ${m}>${s.winRate != null ? s.winRate.toFixed(1)+'%' : '—'}</span></td>
-          <td class="num extra-col"><span ${m}>${s.wins}</span></td>
-          <td class="num extra-col"><span ${m}>${s.losses}</span></td>
-          <td class="num extra-col"><span ${m}>${s.completions}</span></td>
-          <td class="num extra-col"><span ${m}>${fmtTime(s.bestTime)}</span></td>
-          <td class="num extra-col"><span ${m}>${fmtTime(s.avgTime)}</span></td>
-          <td class="num extra-col"><span ${m}>${s.winStreak}</span></td>
-        `;
-      })() : ''}
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winRate', v => v.toFixed(1)+'%')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'wins')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'losses')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'completions')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'bestTime', v => fmtTime(v))}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'avgTime', v => fmtTime(v))}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winStreak')}</td>
     </tr>`;
 
     if (naturalOrder) {
