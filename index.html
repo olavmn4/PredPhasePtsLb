@@ -306,6 +306,8 @@
       <button class="filter-btn" data-filter="top100">top 100</button>
       <input class="search-input" id="main-search" placeholder="search player…" autocomplete="off">
       <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:4px">click a player for stats</span>
+      <button class="filter-btn" id="extra-stats-btn" style="margin-left:auto">+ extra stats</button>
+      <span id="extra-stats-counter" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);display:none"></span>
     </div>
     <div class="table-wrap">
       <div class="state-msg" id="main-loading"><div class="spinner"></div>fetching leaderboard…</div>
@@ -322,6 +324,13 @@
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
             <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
+            <th data-col="winRate" class="num extra-col" style="display:none">win rate<span class="sort-icon">↕</span></th>
+            <th data-col="wins" class="num extra-col" style="display:none">wins<span class="sort-icon">↕</span></th>
+            <th data-col="losses" class="num extra-col" style="display:none">losses<span class="sort-icon">↕</span></th>
+            <th data-col="completions" class="num extra-col" style="display:none">completions<span class="sort-icon">↕</span></th>
+            <th data-col="bestTime" class="num extra-col" style="display:none">best time<span class="sort-icon">↕</span></th>
+            <th data-col="avgTime" class="num extra-col" style="display:none">avg time<span class="sort-icon">↕</span></th>
+            <th data-col="winStreak" class="num extra-col" style="display:none">streak<span class="sort-icon">↕</span></th>
           </tr>
         </thead>
         <tbody id="main-tbody"></tbody>
@@ -485,6 +494,9 @@ let phaseEndsAt = null;
 let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
+let extraStatsOn   = false;
+let extraStatsCache = {}; // uuid → { winRate, wins, losses, completions, bestTime, avgTime, winStreak }
+let extraStatsFetching = false;
 
 let prevEloSnapshot  = {};  // uuid → eloRate, for detecting games every 60s
 let lastPlayedMemory = {};  // uuid → unix timestamp (best known value)
@@ -744,6 +756,63 @@ async function fetchAll(spin=true) {
   }
 }
 
+async function fetchExtraStats() {
+  if (extraStatsFetching) return;
+  extraStatsFetching = true;
+  const counter = document.getElementById('extra-stats-counter');
+  const players = mergedData.filter(u => !u._isZeroPP);
+  let loaded = Object.keys(extraStatsCache).length;
+  const total = players.length;
+  counter.style.display = 'inline';
+  counter.textContent = `loading ${loaded}/${total}`;
+
+  for (const u of players) {
+    if (extraStatsCache[u.uuid]) continue;
+    try {
+      const r = await fetch(`https://api.mcsrranked.com/users/${u.uuid}`);
+      const j = await r.json();
+      if (j.status === 'success' && j.data) {
+        const s = j.data.stats;
+        const wins = s?.wins?.ranked ?? 0;
+        const losses = s?.loses?.ranked ?? 0;
+        const total_m = wins + losses;
+        const completions = s?.completions?.ranked ?? 0;
+        extraStatsCache[u.uuid] = {
+          winRate: total_m > 0 ? (wins / total_m * 100) : null,
+          wins,
+          losses,
+          completions,
+          bestTime: s?.bestTime?.ranked ?? null,
+          avgTime: completions > 0 && s?.completionTime?.ranked ? Math.round(s.completionTime.ranked / completions) : null,
+          winStreak: s?.currentWinStreak?.ranked ?? 0,
+        };
+      }
+    } catch {}
+    loaded++;
+    counter.textContent = `loading ${loaded}/${total}`;
+    renderTable();
+    await new Promise(r => setTimeout(r, 100));
+  }
+  counter.textContent = `${total} loaded`;
+  extraStatsFetching = false;
+}
+
+document.getElementById('extra-stats-btn').addEventListener('click', () => {
+  extraStatsOn = !extraStatsOn;
+  const btn = document.getElementById('extra-stats-btn');
+  btn.textContent = extraStatsOn ? '− extra stats' : '+ extra stats';
+  document.querySelectorAll('.extra-col').forEach(el => {
+    el.style.display = extraStatsOn ? '' : 'none';
+  });
+  document.querySelectorAll('.threshold-colspan').forEach(el => {
+    el.colSpan = extraStatsOn ? 17 : 10;
+  });
+  if (extraStatsOn && !extraStatsFetching && Object.keys(extraStatsCache).length < mergedData.filter(u => !u._isZeroPP).length) {
+    fetchExtraStats();
+  }
+  renderTable();
+});
+
 function getRows() {
   let d = [...mergedData];
   if (searchQuery) {
@@ -769,6 +838,13 @@ function getRows() {
     else if (col==='eloRank')   { va=a.eloRk;        vb=b.eloRk; }
     else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
+    else if (col==='winRate')    { va=extraStatsCache[a.uuid]?.winRate??-1; vb=extraStatsCache[b.uuid]?.winRate??-1; }
+    else if (col==='wins')       { va=extraStatsCache[a.uuid]?.wins??-1; vb=extraStatsCache[b.uuid]?.wins??-1; }
+    else if (col==='losses')     { va=extraStatsCache[a.uuid]?.losses??-1; vb=extraStatsCache[b.uuid]?.losses??-1; }
+    else if (col==='completions'){ va=extraStatsCache[a.uuid]?.completions??-1; vb=extraStatsCache[b.uuid]?.completions??-1; }
+    else if (col==='bestTime')   { va=extraStatsCache[a.uuid]?.bestTime??999999; vb=extraStatsCache[b.uuid]?.bestTime??999999; }
+    else if (col==='avgTime')    { va=extraStatsCache[a.uuid]?.avgTime??999999; vb=extraStatsCache[b.uuid]?.avgTime??999999; }
+    else if (col==='winStreak')  { va=extraStatsCache[a.uuid]?.winStreak??-1; vb=extraStatsCache[b.uuid]?.winStreak??-1; }
     if (va < vb) return asc ? -1 : 1;
     if (va > vb) return asc ? 1 : -1;
     return 0;
@@ -815,6 +891,20 @@ function renderTable() {
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
       <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
+      ${extraStatsOn ? (() => {
+        const s = extraStatsCache[u.uuid];
+        const m = `style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)"`;
+        if (!s) return `<td class="num extra-col"><span ${m}>…</span></td>`.repeat(7);
+        return `
+          <td class="num extra-col"><span ${m}>${s.winRate != null ? s.winRate.toFixed(1)+'%' : '—'}</span></td>
+          <td class="num extra-col"><span ${m}>${s.wins}</span></td>
+          <td class="num extra-col"><span ${m}>${s.losses}</span></td>
+          <td class="num extra-col"><span ${m}>${s.completions}</span></td>
+          <td class="num extra-col"><span ${m}>${fmtTime(s.bestTime)}</span></td>
+          <td class="num extra-col"><span ${m}>${fmtTime(s.avgTime)}</span></td>
+          <td class="num extra-col"><span ${m}>${s.winStreak}</span></td>
+        `;
+      })() : ''}
     </tr>`;
 
     if (naturalOrder) {
@@ -823,7 +913,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="10">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="10" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -831,7 +921,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="10">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="10" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
@@ -1190,11 +1280,19 @@ function renderChart(uuid, type, row) {
 
   if (type === 'elo') {
     const ms = [...modalMatches].reverse();
-    const labels = ms.map(m => fmtAgo(m.date));
     const data = ms.map(m => {
       const c = m.changes?.find(c => c.uuid === uuid);
-      return c ? c.eloRate + c.change : null; // post-game elo
+      return c ? c.eloRate + c.change : null;
     });
+
+    // Filter out placement matches (post-game elo of 0 or null)
+    const filtered = ms.reduce((acc, m, i) => {
+      if (data[i] && data[i] > 0) acc.push({ m, eloVal: data[i] });
+      return acc;
+    }, []);
+
+    const filteredData   = filtered.map(f => f.eloVal);
+    const filteredLabels = filtered.map(f => fmtAgo(f.m.date));
 
     const TIERS = [
       { min: 2000, label: 'Netherite', color: '#a78bfa' },
@@ -1210,15 +1308,15 @@ function renderChart(uuid, type, row) {
       return '#6b7280';
     };
 
-    const validData = data.filter(v => v != null);
+    const validData = filteredData.filter(v => v != null);
     const minVal = Math.min(...validData);
     const maxVal = Math.max(...validData);
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
     modalChart = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: [{
-        data,
+      data: { labels: filteredLabels, datasets: [{
+        data: filteredData,
         borderColor: ctx => {
           const v = ctx.p1?.parsed?.y;
           return v != null ? tierColor(v) : '#4ade80';
@@ -1226,7 +1324,7 @@ function renderChart(uuid, type, row) {
         segment: {
           borderColor: ctx => tierColor(ctx.p1?.parsed?.y ?? 0),
         },
-        pointBackgroundColor: data.map(v => v != null ? tierColor(v) : '#4ade80'),
+        pointBackgroundColor: filteredData.map(v => v != null ? tierColor(v) : '#4ade80'),
         backgroundColor: 'rgba(0,0,0,0)',
         borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0.1, fill: false,
       }]},
