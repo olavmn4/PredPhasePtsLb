@@ -242,6 +242,13 @@
   #modal-canvas { width: 100% !important; height: 100% !important; }
   #main-tbody tr:not(.threshold-row) { cursor: pointer; }
 
+  .col-mini-btn {
+    cursor: pointer; font-size: 11px; opacity: .5;
+    border: 1px solid transparent; padding: 0 2px; margin-right: 3px;
+    vertical-align: middle; border-radius: 2px; transition: opacity .1s, border-color .1s;
+  }
+  .col-mini-btn:hover { opacity: 1; border-color: var(--border); }
+
   .col-mode-toggle {
     display: inline-block; font-size: 9px; color: var(--accent); cursor: pointer;
     border: 1px solid var(--accent); padding: 0 3px; margin-right: 2px; opacity: .7;
@@ -334,11 +341,10 @@
           <tr>
             <th data-col="ppRank" class="sorted num" style="width:32px">#<span class="sort-icon">↑</span></th>
             <th data-col="phaseMove" style="width:36px"><span class="sort-icon" style="font-size:10px">↕</span></th>
-            <th data-col="name" style="padding-left:8px">
-              <span style="margin-right:6px">player</span>
-              <span id="helm-hue-th" style="cursor:pointer;font-size:10px;opacity:.5;margin-right:4px" title="sort by helm color">🌈</span>
-              <span id="flag-sort-th" style="cursor:pointer;font-size:10px;opacity:.5" title="sort by country">🌍</span>
-              <span class="sort-icon">↕</span>
+            <th data-col="name">
+              <span id="helm-hue-th" class="col-mini-btn" title="sort by helm color">🌈</span>
+              <span id="flag-sort-th" class="col-mini-btn" title="sort by country">🇺🇳</span>
+              player<span class="sort-icon">↕</span>
             </th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
@@ -562,7 +568,7 @@ async function loadLastPlayed() {
 }
 
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const flag = c => c ? [...c.toUpperCase()].map(ch => String.fromCodePoint(0x1F1E6+ch.charCodeAt(0)-65)).join('') : '';
+const flag = c => c ? `<img src="https://flagcdn.com/16x12/${c.toLowerCase()}.png" alt="${c}" style="width:16px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.style.display='none'">` : '';
 const roleBadge = () => '';
 const avatarUrl = uuid => `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
 const rankCls   = n => n===1?'rank-1':n===2?'rank-2':n===3?'rank-3':'';
@@ -1243,7 +1249,7 @@ async function openModal(uuid) {
   const row = mergedData.find(u => u.uuid === uuid);
   document.getElementById('modal-avatar').src = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/48`;
   document.getElementById('modal-nickname').textContent = row?.nickname ?? '…';
-  document.getElementById('modal-flag').textContent = row?.country ? flag(row.country) : '';
+  document.getElementById('modal-flag').innerHTML = row?.country ? flag(row.country) : '';
   document.getElementById('modal-sub').innerHTML = `
     <span style="color:${eloColor(row?.eloRate??0)}">${row?.eloRate ?? '—'} elo</span>
     <span>rank #${row?.eloRk ?? '—'}</span>
@@ -1682,10 +1688,10 @@ async function fetchHelmHue(uuid) {
 
 async function loadAllHelmHues() {
   const btn = document.getElementById('helm-hue-th');
-  if (btn) { btn.textContent = '⏳'; btn.style.opacity = '1'; }
+  if (btn) { btn.textContent = '⏳'; }
   const promises = mergedData.map(u => fetchHelmHue(u.uuid));
   await Promise.all(promises);
-  if (btn) { btn.textContent = '🌈'; btn.style.opacity = '.5'; }
+  if (btn) { btn.textContent = '🌈'; }
   sortState.col = 'helmHue'; sortState.asc = true;
   renderTable();
 }
