@@ -102,7 +102,8 @@
   .search-input:focus { border-color: #2e3236; }
 
   /* ── Table ── */
-  .table-wrap { border: 1px solid var(--border); border-radius: 0; overflow-x: auto; overflow-y: hidden; }
+  .table-wrap { border: 1px solid var(--border); border-radius: 0; overflow: hidden; }
+  .table-scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; }
   thead { background: var(--bg2); border-bottom: 1px solid var(--border); }
   th {
@@ -311,6 +312,7 @@
     </div>
     <div class="table-wrap">
       <div class="state-msg" id="main-loading"><div class="spinner"></div>fetching leaderboard…</div>
+      <div class="table-scroll">
       <table id="main-table" style="display:none">
         <thead>
           <tr>
@@ -335,6 +337,7 @@
         </thead>
         <tbody id="main-tbody"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -772,7 +775,7 @@ async function fetchExtraStats() {
       const r = await fetch(`https://api.mcsrranked.com/users/${u.uuid}`);
       const j = await r.json();
       if (j.status === 'success' && j.data) {
-        const s = j.data.stats;
+        const s = j.data.statistics?.season;
         const wins = s?.wins?.ranked ?? 0;
         const losses = s?.loses?.ranked ?? 0;
         const total_m = wins + losses;
