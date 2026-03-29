@@ -242,6 +242,14 @@
   #modal-canvas { width: 100% !important; height: 100% !important; }
   #main-tbody tr:not(.threshold-row) { cursor: pointer; }
 
+  .col-mode-toggle {
+    display: inline-block; font-size: 9px; color: var(--accent); cursor: pointer;
+    border: 1px solid var(--accent); padding: 0 3px; margin-right: 2px; opacity: .7;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: .03em;
+  }
+  .col-mode-toggle:hover { opacity: 1; }
+  .col-mode-toggle.total { color: #fbbf24; border-color: #fbbf24; }
+
   #history-chart-wrap {
     display: flex; gap: 16px; align-items: flex-start;
   }
@@ -326,13 +334,19 @@
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
             <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
-            <th data-col="winRate" class="num extra-col" style="display:none">win rate<span class="sort-icon">↕</span></th>
-            <th data-col="wins" class="num extra-col" style="display:none">wins<span class="sort-icon">↕</span></th>
-            <th data-col="losses" class="num extra-col" style="display:none">losses<span class="sort-icon">↕</span></th>
-            <th data-col="completions" class="num extra-col" style="display:none">completions<span class="sort-icon">↕</span></th>
-            <th data-col="bestTime" class="num extra-col" style="display:none">best time<span class="sort-icon">↕</span></th>
-            <th data-col="avgTime" class="num extra-col" style="display:none">avg time<span class="sort-icon">↕</span></th>
-            <th data-col="winStreak" class="num extra-col" style="display:none">streak<span class="sort-icon">↕</span></th>
+            <th data-col="winRate"        class="num extra-col" style="display:none" data-ekey="winRate">win rate<br><span class="col-mode-toggle" data-key="winRate">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="wins"           class="num extra-col" style="display:none" data-ekey="wins">wins<br><span class="col-mode-toggle" data-key="wins">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="losses"         class="num extra-col" style="display:none" data-ekey="losses">losses<br><span class="col-mode-toggle" data-key="losses">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="played"         class="num extra-col" style="display:none" data-ekey="played">played<br><span class="col-mode-toggle" data-key="played">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="completions"    class="num extra-col" style="display:none" data-ekey="completions">completions<br><span class="col-mode-toggle" data-key="completions">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="completionRate" class="num extra-col" style="display:none" data-ekey="completionRate">comp rate<br><span class="col-mode-toggle" data-key="completionRate">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="forfeitRate"    class="num extra-col" style="display:none" data-ekey="forfeitRate">forfeit rate<br><span class="col-mode-toggle" data-key="forfeitRate">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="forfeits"       class="num extra-col" style="display:none" data-ekey="forfeits">forfeits<br><span class="col-mode-toggle" data-key="forfeits">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="bestTime"       class="num extra-col" style="display:none" data-ekey="bestTime">best time<br><span class="col-mode-toggle" data-key="bestTime">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="avgTime"        class="num extra-col" style="display:none" data-ekey="avgTime">avg time<br><span class="col-mode-toggle" data-key="avgTime">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="winStreak"      class="num extra-col" style="display:none">streak<span class="sort-icon">↕</span></th>
+            <th data-col="highestStreak"  class="num extra-col" style="display:none" data-ekey="highestStreak">best streak<br><span class="col-mode-toggle" data-key="highestStreak">S10</span><span class="sort-icon">↕</span></th>
+            <th data-col="eloRange"       class="num extra-col" style="display:none">elo range<span class="sort-icon">↕</span></th>
           </tr>
         </thead>
         <tbody id="main-tbody"></tbody>
@@ -498,8 +512,9 @@ let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
 let searchQuery = '';
 let extraStatsOn   = false;
-let extraStatsCache = {}; // uuid → { winRate, wins, losses, completions, bestTime, avgTime, winStreak }
+let extraStatsCache = {};
 let extraStatsFetching = false;
+let extraColMode = {}; // key → 'season' | 'total'
 
 let prevEloSnapshot  = {};  // uuid → eloRate, for detecting games every 60s
 let lastPlayedMemory = {};  // uuid → unix timestamp (best known value)
@@ -775,17 +790,49 @@ async function fetchExtraStats() {
       const r = await fetch(`https://api.mcsrranked.com/users/${u.uuid}`);
       const j = await r.json();
       if (j.status === 'success' && j.data) {
-        const s = j.data.statistics?.season;
-        const wins = s?.wins?.ranked ?? 0;
-        const losses = s?.loses?.ranked ?? 0;
-        const total_m = wins + losses;
-        const completions = s?.completions?.ranked ?? 0;
+        const s  = j.data.statistics?.season;
+        const t  = j.data.statistics?.total;
+        const sr = j.data.seasonResult;
+        const wins_s = s?.wins?.ranked ?? 0;
+        const losses_s = s?.loses?.ranked ?? 0;
+        const total_s = wins_s + losses_s;
+        const completions_s = s?.completions?.ranked ?? 0;
+        const wins_t = t?.wins?.ranked ?? 0;
+        const losses_t = t?.loses?.ranked ?? 0;
+        const total_t = wins_t + losses_t;
+        const completions_t = t?.completions?.ranked ?? 0;
         extraStatsCache[u.uuid] = {
-          winRate: total_m > 0 ? (wins / total_m * 100) : null,
-          wins, losses, completions,
-          bestTime: s?.bestTime?.ranked ?? null,
-          avgTime: completions > 0 && s?.completionTime?.ranked ? Math.round(s.completionTime.ranked / completions) : null,
-          winStreak: s?.currentWinStreak?.ranked ?? 0,
+          season: {
+            winRate: total_s > 0 ? (wins_s / total_s * 100) : null,
+            wins: wins_s, losses: losses_s,
+            completions: completions_s,
+            completionRate: total_s > 0 ? (completions_s / total_s * 100) : null,
+            forfeitRate: total_s > 0 ? ((s?.forfeits?.ranked ?? 0) / total_s * 100) : null,
+            forfeits: s?.forfeits?.ranked ?? 0,
+            played: s?.playedMatches?.ranked ?? 0,
+            bestTime: s?.bestTime?.ranked ?? null,
+            avgTime: completions_s > 0 && s?.completionTime?.ranked ? Math.round(s.completionTime.ranked / completions_s) : null,
+            winStreak: s?.currentWinStreak?.ranked ?? 0,
+            highestStreak: s?.highestWinStreak?.ranked ?? 0,
+            eloHigh: sr?.highest ?? null,
+            eloLow: sr?.lowest ?? null,
+            eloRange: sr?.highest != null && sr?.lowest != null ? sr.highest - sr.lowest : null,
+          },
+          total: {
+            winRate: total_t > 0 ? (wins_t / total_t * 100) : null,
+            wins: wins_t, losses: losses_t,
+            completions: completions_t,
+            completionRate: total_t > 0 ? (completions_t / total_t * 100) : null,
+            forfeitRate: total_t > 0 ? ((t?.forfeits?.ranked ?? 0) / total_t * 100) : null,
+            forfeits: t?.forfeits?.ranked ?? null,
+            played: t?.playedMatches?.ranked ?? 0,
+            bestTime: t?.bestTime?.ranked ?? null,
+            avgTime: completions_t > 0 && t?.completionTime?.ranked ? Math.round(t.completionTime.ranked / completions_t) : null,
+            winStreak: s?.currentWinStreak?.ranked ?? 0,
+            highestStreak: t?.highestWinStreak?.ranked ?? 0,
+            eloHigh: null, eloLow: null, eloRange: null, // no all-time elo range available
+          },
+          nextDecay: j.data.timestamp?.nextDecay ?? null,
         };
       }
     } catch {}
@@ -807,7 +854,7 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
     el.style.display = extraStatsOn ? '' : 'none';
   });
   document.querySelectorAll('.threshold-colspan').forEach(el => {
-    el.colSpan = extraStatsOn ? 17 : 10;
+    el.colSpan = extraStatsOn ? 23 : 10;
   });
   // Expand main content width when extra stats are shown
   document.querySelector('main').style.maxWidth = extraStatsOn ? '100%' : '';
@@ -818,20 +865,24 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
   renderTable();
 });
 
+function getExtraVal(uuid, key) {
+  const s = extraStatsCache[uuid];
+  if (!s) return null;
+  const mode = extraColMode[key] ?? 'season';
+  return s[mode]?.[key] ?? null;
+}
+
 function extraStatColor(key, value) {
-  const all = Object.values(extraStatsCache).map(s => s[key]).filter(v => v != null && v > 0);
+  const all = Object.values(extraStatsCache).map(s => {
+    const mode = extraColMode[key] ?? 'season';
+    return s[mode]?.[key];
+  }).filter(v => v != null && v > 0);
   if (all.length < 2) return 'var(--muted)';
   const min = Math.min(...all);
   const max = Math.max(...all);
   if (min === max) return 'var(--muted)';
-
-  // For time-based stats (lower = better), invert the ratio
-  const lowerIsBetter = key === 'bestTime' || key === 'avgTime' || key === 'losses';
-  const ratio = lowerIsBetter
-    ? 1 - (value - min) / (max - min)
-    : (value - min) / (max - min);
-
-  // ratio 0 = worst (red), 0.5 = average (yellow), 1 = best (green)
+  const lowerIsBetter = key === 'bestTime' || key === 'avgTime' || key === 'losses' || key === 'forfeitRate' || key === 'forfeits';
+  const ratio = lowerIsBetter ? 1 - (value - min) / (max - min) : (value - min) / (max - min);
   if (ratio >= 0.75) return '#4ade80';
   if (ratio >= 0.5)  return `hsl(${Math.round(60 + (ratio - 0.5) * 2 * 60)}, 80%, 65%)`;
   if (ratio >= 0.25) return `hsl(${Math.round((ratio - 0.25) * 4 * 60)}, 80%, 65%)`;
@@ -841,7 +892,7 @@ function extraStatColor(key, value) {
 function extraStatCell(uuid, key, fmt = v => v) {
   const s = extraStatsCache[uuid];
   if (!s) return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)">…</span>`;
-  const v = s[key];
+  const v = getExtraVal(uuid, key);
   if (v == null) return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)">—</span>`;
   const color = extraStatColor(key, v);
   return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${color};font-weight:500">${fmt(v)}</span>`;
@@ -872,13 +923,19 @@ function getRows() {
     else if (col==='eloRank')   { va=a.eloRk;        vb=b.eloRk; }
     else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
-    else if (col==='winRate')    { va=extraStatsCache[a.uuid]?.winRate??-1; vb=extraStatsCache[b.uuid]?.winRate??-1; }
-    else if (col==='wins')       { va=extraStatsCache[a.uuid]?.wins??-1; vb=extraStatsCache[b.uuid]?.wins??-1; }
-    else if (col==='losses')     { va=extraStatsCache[a.uuid]?.losses??-1; vb=extraStatsCache[b.uuid]?.losses??-1; }
-    else if (col==='completions'){ va=extraStatsCache[a.uuid]?.completions??-1; vb=extraStatsCache[b.uuid]?.completions??-1; }
-    else if (col==='bestTime')   { va=extraStatsCache[a.uuid]?.bestTime??999999; vb=extraStatsCache[b.uuid]?.bestTime??999999; }
-    else if (col==='avgTime')    { va=extraStatsCache[a.uuid]?.avgTime??999999; vb=extraStatsCache[b.uuid]?.avgTime??999999; }
-    else if (col==='winStreak')  { va=extraStatsCache[a.uuid]?.winStreak??-1; vb=extraStatsCache[b.uuid]?.winStreak??-1; }
+    else if (col==='winRate')       { va=getExtraVal(a.uuid,'winRate')??-1;       vb=getExtraVal(b.uuid,'winRate')??-1; }
+    else if (col==='wins')          { va=getExtraVal(a.uuid,'wins')??-1;           vb=getExtraVal(b.uuid,'wins')??-1; }
+    else if (col==='losses')        { va=getExtraVal(a.uuid,'losses')??-1;         vb=getExtraVal(b.uuid,'losses')??-1; }
+    else if (col==='played')        { va=getExtraVal(a.uuid,'played')??-1;         vb=getExtraVal(b.uuid,'played')??-1; }
+    else if (col==='completions')   { va=getExtraVal(a.uuid,'completions')??-1;    vb=getExtraVal(b.uuid,'completions')??-1; }
+    else if (col==='completionRate'){ va=getExtraVal(a.uuid,'completionRate')??-1; vb=getExtraVal(b.uuid,'completionRate')??-1; }
+    else if (col==='forfeitRate')   { va=getExtraVal(a.uuid,'forfeitRate')??999;   vb=getExtraVal(b.uuid,'forfeitRate')??999; }
+    else if (col==='forfeits')      { va=getExtraVal(a.uuid,'forfeits')??999;      vb=getExtraVal(b.uuid,'forfeits')??999; }
+    else if (col==='bestTime')      { va=getExtraVal(a.uuid,'bestTime')??999999;   vb=getExtraVal(b.uuid,'bestTime')??999999; }
+    else if (col==='avgTime')       { va=getExtraVal(a.uuid,'avgTime')??999999;    vb=getExtraVal(b.uuid,'avgTime')??999999; }
+    else if (col==='winStreak')     { va=getExtraVal(a.uuid,'winStreak')??-1;      vb=getExtraVal(b.uuid,'winStreak')??-1; }
+    else if (col==='highestStreak') { va=getExtraVal(a.uuid,'highestStreak')??-1;  vb=getExtraVal(b.uuid,'highestStreak')??-1; }
+    else if (col==='eloRange')      { va=getExtraVal(a.uuid,'eloRange')??-1;       vb=getExtraVal(b.uuid,'eloRange')??-1; }
     if (va < vb) return asc ? -1 : 1;
     if (va > vb) return asc ? 1 : -1;
     return 0;
@@ -928,10 +985,16 @@ function renderTable() {
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winRate', v => v.toFixed(1)+'%')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'wins')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'losses')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'played')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'completions')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'completionRate', v => v.toFixed(1)+'%')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'forfeitRate', v => v.toFixed(1)+'%')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'forfeits')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'bestTime', v => fmtTime(v))}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'avgTime', v => fmtTime(v))}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winStreak')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'highestStreak')}</td>
+      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'eloRange')}</td>
     </tr>`;
 
     if (naturalOrder) {
@@ -966,7 +1029,7 @@ document.querySelectorAll('#main-table thead th').forEach(th => {
     else {
       sortState.col = col;
       // ascending first: rank cols, name, time cols (lower = better)
-      sortState.asc = col==='ppRank' || col==='eloRank' || col==='name' || col==='bestTime' || col==='avgTime' || col==='losses';
+      sortState.asc = col==='ppRank' || col==='eloRank' || col==='name' || col==='bestTime' || col==='avgTime' || col==='losses' || col==='forfeitRate' || col==='forfeits';
     }
     document.querySelectorAll('#main-table thead th').forEach(t => {
       t.classList.remove('sorted');
@@ -980,7 +1043,17 @@ document.querySelectorAll('#main-table thead th').forEach(th => {
   });
 });
 
-document.querySelectorAll('.tab').forEach(tab => {
+document.getElementById('main-table').addEventListener('click', e => {
+  const toggle = e.target.closest('.col-mode-toggle');
+  if (!toggle) return;
+  e.stopPropagation();
+  const key = toggle.dataset.key;
+  extraColMode[key] = extraColMode[key] === 'total' ? 'season' : 'total';
+  const isTotal = extraColMode[key] === 'total';
+  toggle.textContent = isTotal ? 'all' : 'S10';
+  toggle.classList.toggle('total', isTotal);
+  renderTable();
+});
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
