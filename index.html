@@ -488,7 +488,6 @@ let searchQuery = '';
 
 let prevEloSnapshot  = {};  // uuid → eloRate, for detecting games every 60s
 let lastPlayedMemory = {};  // uuid → unix timestamp (best known value)
-let lastPlayedFetched = false; // only run the API fetch once per page load
 
 function detectGamesFromElo(allPlayers) {
   const now = Math.floor(Date.now() / 1000);
@@ -501,27 +500,23 @@ function detectGamesFromElo(allPlayers) {
   }
 }
 
-async function fetchLastPlayedApi(uuid) {
-  try {
-    const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
-    const j = await r.json();
-    if (j.status === 'success' && j.data?.length) return j.data[0].date;
-  } catch {}
-  return null;
-}
+let lastPlayedLoaded = false;
 
-async function populateLastPlayedFromApi(players) {
-  if (lastPlayedFetched) return;
-  lastPlayedFetched = true;
-  for (const u of players) {
-    const ts = await fetchLastPlayedApi(u.uuid);
-    if (ts != null && (!lastPlayedMemory[u.uuid] || ts > lastPlayedMemory[u.uuid])) {
-      lastPlayedMemory[u.uuid] = ts;
-      buildMerged();
-      renderTable();
+async function loadLastPlayed() {
+  if (lastPlayedLoaded) return;
+  lastPlayedLoaded = true;
+  try {
+    const r = await fetch(`/PredPhasePtsLb/lastplayed.json?t=${Date.now()}`);
+    const data = await r.json();
+    let updated = false;
+    for (const [uuid, ts] of Object.entries(data)) {
+      if (!lastPlayedMemory[uuid] || ts > lastPlayedMemory[uuid]) {
+        lastPlayedMemory[uuid] = ts;
+        updated = true;
+      }
     }
-    await new Promise(r => setTimeout(r, 80));
-  }
+    if (updated) { buildMerged(); renderTable(); }
+  } catch(e) { console.warn('lastplayed fetch failed', e); }
 }
 
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -740,7 +735,7 @@ async function fetchAll(spin=true) {
     document.getElementById('last-updated').textContent =
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
-    populateLastPlayedFromApi(allPlayers);
+    loadLastPlayed();
   } catch(e) {
     console.error(e);
     document.getElementById('last-updated').textContent = 'error';

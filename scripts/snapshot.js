@@ -135,15 +135,22 @@ async function main() {
   writeFileSync(HISTORY_FILE, JSON.stringify(history));
   console.log(`Saved ${players.length} players, ${history.length} total snapshots`);
 
+  // Write lastplayed.json — flat map of uuid → timestamp for instant page load
+  const lastPlayedOut = {};
+  for (const p of players) {
+    if (p.lastPlayed) lastPlayedOut[p.uuid] = p.lastPlayed;
+  }
+  writeFileSync('lastplayed.json', JSON.stringify(lastPlayedOut));
+
   // Commit and push
   execSync('git config user.name "github-actions[bot]"');
   execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
-  execSync(`git add ${HISTORY_FILE}`);
+  execSync(`git add ${HISTORY_FILE} lastplayed.json`);
   try {
     execSync('git diff --staged --quiet');
     console.log('No changes to commit');
   } catch {
-    execSync(`git commit -m "snapshot ${new Date().toISOString()}"`);
+    execSync(`git commit -m "snapshot ${new Date().toISOString()} [skip ci]"`);
     execSync('git push');
     console.log('Pushed history.json');
   }
