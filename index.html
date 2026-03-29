@@ -334,7 +334,12 @@
           <tr>
             <th data-col="ppRank" class="sorted num" style="width:32px">#<span class="sort-icon">↑</span></th>
             <th data-col="phaseMove" style="width:36px"><span class="sort-icon" style="font-size:10px">↕</span></th>
-            <th data-col="name">player</th>
+            <th data-col="name" style="padding-left:8px">
+              <span style="margin-right:6px">player</span>
+              <span id="helm-hue-th" style="cursor:pointer;font-size:10px;opacity:.5;margin-right:4px" title="sort by helm color">🌈</span>
+              <span id="flag-sort-th" style="cursor:pointer;font-size:10px;opacity:.5" title="sort by country">🌍</span>
+              <span class="sort-icon">↕</span>
+            </th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
             <th data-col="gain" class="num">+gain<span class="sort-icon">↕</span></th>
@@ -342,7 +347,6 @@
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
             <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
-            <th data-col="helmHue" class="num" id="helm-hue-th" title="sort by average helm color" style="cursor:pointer">🌈<span class="sort-icon">↕</span></th>
             <th data-col="winRate"        class="num extra-col" style="display:none" data-ekey="winRate">win rate<br><span class="col-mode-toggle" data-key="winRate">S10</span><span class="sort-icon">↕</span></th>
             <th data-col="wins"           class="num extra-col" style="display:none" data-ekey="wins">wins<br><span class="col-mode-toggle" data-key="wins">S10</span><span class="sort-icon">↕</span></th>
             <th data-col="losses"         class="num extra-col" style="display:none" data-ekey="losses">losses<br><span class="col-mode-toggle" data-key="losses">S10</span><span class="sort-icon">↕</span></th>
@@ -924,6 +928,7 @@ function getRows() {
     else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
     else if (col==='helmHue')    { va=helmHueCache[a.uuid]??-1; vb=helmHueCache[b.uuid]??-1; }
+    else if (col==='flagSort')   { va=a.country??'zzz'; vb=b.country??'zzz'; }
     else if (col==='winRate')       { va=getExtraVal(a.uuid,'winRate')??-1;       vb=getExtraVal(b.uuid,'winRate')??-1; }
     else if (col==='wins')          { va=getExtraVal(a.uuid,'wins')??-1;           vb=getExtraVal(b.uuid,'wins')??-1; }
     else if (col==='losses')        { va=getExtraVal(a.uuid,'losses')??-1;         vb=getExtraVal(b.uuid,'losses')??-1; }
@@ -983,7 +988,6 @@ function renderTable() {
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
       <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
-      <td class="num">${(() => { const h = helmHueCache[u.uuid]; if (h == null) return '<span style="color:var(--muted);font-size:10px">—</span>'; if (h < 0) return '<span style="color:var(--muted);font-size:10px">—</span>'; return `<div style="width:18px;height:10px;background:hsl(${h},70%,55%);display:inline-block;border-radius:2px" title="hue ${h}°"></div>`; })()}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winRate', v => v.toFixed(1)+'%')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'wins')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'losses')}</td>
@@ -1004,7 +1008,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="${extraStatsOn ? 23 : 11}" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -1012,7 +1016,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="${extraStatsOn ? 23 : 11}" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
@@ -1077,12 +1081,20 @@ document.getElementById('extra-mode-all-btn').addEventListener('click', () => {
 });
 
 document.getElementById('helm-hue-th').addEventListener('click', e => {
+  e.stopPropagation();
   if (sortState.col === 'helmHue') {
     sortState.asc = !sortState.asc;
     renderTable();
   } else {
     loadAllHelmHues();
   }
+});
+
+document.getElementById('flag-sort-th').addEventListener('click', e => {
+  e.stopPropagation();
+  if (sortState.col === 'flagSort') sortState.asc = !sortState.asc;
+  else { sortState.col = 'flagSort'; sortState.asc = true; }
+  renderTable();
 });
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -1670,10 +1682,10 @@ async function fetchHelmHue(uuid) {
 
 async function loadAllHelmHues() {
   const btn = document.getElementById('helm-hue-th');
-  if (btn) btn.textContent = '🌈 loading…';
+  if (btn) { btn.textContent = '⏳'; btn.style.opacity = '1'; }
   const promises = mergedData.map(u => fetchHelmHue(u.uuid));
   await Promise.all(promises);
-  if (btn) btn.innerHTML = '🌈<span class="sort-icon">↕</span>';
+  if (btn) { btn.textContent = '🌈'; btn.style.opacity = '.5'; }
   sortState.col = 'helmHue'; sortState.asc = true;
   renderTable();
 }
