@@ -312,10 +312,10 @@
       <span class="filter-label">show:</span>
       <button class="filter-btn active" data-filter="all">all</button>
       <button class="filter-btn" data-filter="top12">top 12</button>
-      <button class="filter-btn" data-filter="top100">top 100</button>
       <input class="search-input" id="main-search" placeholder="search player…" autocomplete="off">
       <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:4px">click a player for stats</span>
       <button class="filter-btn" id="extra-stats-btn" style="margin-left:auto">+ extra stats</button>
+      <button class="filter-btn" id="extra-mode-all-btn" style="display:none">S10 → all</button>
       <span id="extra-stats-counter" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);display:none"></span>
     </div>
     <div class="table-wrap">
@@ -346,7 +346,6 @@
             <th data-col="avgTime"        class="num extra-col" style="display:none" data-ekey="avgTime">avg time<br><span class="col-mode-toggle" data-key="avgTime">S10</span><span class="sort-icon">↕</span></th>
             <th data-col="winStreak"      class="num extra-col" style="display:none">streak<span class="sort-icon">↕</span></th>
             <th data-col="highestStreak"  class="num extra-col" style="display:none" data-ekey="highestStreak">best streak<br><span class="col-mode-toggle" data-key="highestStreak">S10</span><span class="sort-icon">↕</span></th>
-            <th data-col="eloRange"       class="num extra-col" style="display:none">elo range<span class="sort-icon">↕</span></th>
           </tr>
         </thead>
         <tbody id="main-tbody"></tbody>
@@ -853,10 +852,7 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
   document.querySelectorAll('.extra-col').forEach(el => {
     el.style.display = extraStatsOn ? '' : 'none';
   });
-  document.querySelectorAll('.threshold-colspan').forEach(el => {
-    el.colSpan = extraStatsOn ? 23 : 10;
-  });
-  // Expand main content width when extra stats are shown
+  document.getElementById('extra-mode-all-btn').style.display = extraStatsOn ? '' : 'none';
   document.querySelector('main').style.maxWidth = extraStatsOn ? '100%' : '';
   document.querySelector('.header-inner').style.maxWidth = extraStatsOn ? '100%' : '';
   if (extraStatsOn && !extraStatsFetching && Object.keys(extraStatsCache).length < mergedData.length) {
@@ -905,11 +901,6 @@ function getRows() {
     d = d.filter(u => u.nickname.toLowerCase().includes(q));
   }
   if (filterMode === 'top12')  d = d.filter(u => u.ppRk <= 12);
-  if (filterMode === 'top100') {
-    const phasePlayers = mergedData.filter(x => !x._isZeroPP);
-    const threshold = phasePlayers.length >= 100 ? phasePlayers[99].predPP : null;
-    d = d.filter(u => !u._isZeroPP && (threshold === null || u.predPP >= threshold));
-  }
 
   const {col, asc} = sortState;
   d.sort((a, b) => {
@@ -994,7 +985,6 @@ function renderTable() {
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'avgTime', v => fmtTime(v))}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winStreak')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'highestStreak')}</td>
-      <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'eloRange')}</td>
     </tr>`;
 
     if (naturalOrder) {
@@ -1003,7 +993,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="10" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -1011,7 +1001,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="10" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
@@ -1047,11 +1037,30 @@ document.getElementById('main-table').addEventListener('click', e => {
   const toggle = e.target.closest('.col-mode-toggle');
   if (!toggle) return;
   e.stopPropagation();
+  e.preventDefault();
   const key = toggle.dataset.key;
+  const prevSort = { ...sortState }; // save sort state
   extraColMode[key] = extraColMode[key] === 'total' ? 'season' : 'total';
+  sortState = prevSort; // restore sort state
   const isTotal = extraColMode[key] === 'total';
   toggle.textContent = isTotal ? 'all' : 'S10';
   toggle.classList.toggle('total', isTotal);
+  renderTable();
+});
+
+document.getElementById('extra-mode-all-btn').addEventListener('click', () => {
+  const btn = document.getElementById('extra-mode-all-btn');
+  const allTotal = Object.values(extraColMode).some(v => v === 'total');
+  // If any are total, switch all to season. Otherwise switch all to total.
+  const targetMode = allTotal ? 'season' : 'total';
+  const keys = ['winRate','wins','losses','played','completions','completionRate','forfeitRate','forfeits','bestTime','avgTime','highestStreak'];
+  keys.forEach(k => extraColMode[k] = targetMode);
+  btn.textContent = targetMode === 'total' ? 'all → S10' : 'S10 → all';
+  document.querySelectorAll('.col-mode-toggle').forEach(t => {
+    const isTotal = extraColMode[t.dataset.key] === 'total';
+    t.textContent = isTotal ? 'all' : 'S10';
+    t.classList.toggle('total', isTotal);
+  });
   renderTable();
 });
 
