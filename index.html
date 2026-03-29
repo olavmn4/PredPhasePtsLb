@@ -1190,11 +1190,19 @@ function renderChart(uuid, type, row) {
 
   if (type === 'elo') {
     const ms = [...modalMatches].reverse();
-    const labels = ms.map(m => fmtAgo(m.date));
     const data = ms.map(m => {
       const c = m.changes?.find(c => c.uuid === uuid);
-      return c ? c.eloRate + c.change : null; // post-game elo
+      return c ? c.eloRate + c.change : null;
     });
+
+    // Filter out placement matches (post-game elo of 0 or null)
+    const filtered = ms.reduce((acc, m, i) => {
+      if (data[i] && data[i] > 0) acc.push({ m, eloVal: data[i] });
+      return acc;
+    }, []);
+
+    const filteredData   = filtered.map(f => f.eloVal);
+    const filteredLabels = filtered.map(f => fmtAgo(f.m.date));
 
     const TIERS = [
       { min: 2000, label: 'Netherite', color: '#a78bfa' },
@@ -1210,15 +1218,15 @@ function renderChart(uuid, type, row) {
       return '#6b7280';
     };
 
-    const validData = data.filter(v => v != null);
+    const validData = filteredData.filter(v => v != null);
     const minVal = Math.min(...validData);
     const maxVal = Math.max(...validData);
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
     modalChart = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: [{
-        data,
+      data: { labels: filteredLabels, datasets: [{
+        data: filteredData,
         borderColor: ctx => {
           const v = ctx.p1?.parsed?.y;
           return v != null ? tierColor(v) : '#4ade80';
@@ -1226,7 +1234,7 @@ function renderChart(uuid, type, row) {
         segment: {
           borderColor: ctx => tierColor(ctx.p1?.parsed?.y ?? 0),
         },
-        pointBackgroundColor: data.map(v => v != null ? tierColor(v) : '#4ade80'),
+        pointBackgroundColor: filteredData.map(v => v != null ? tierColor(v) : '#4ade80'),
         backgroundColor: 'rgba(0,0,0,0)',
         borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0.1, fill: false,
       }]},
