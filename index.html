@@ -809,6 +809,9 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
   document.querySelectorAll('.threshold-colspan').forEach(el => {
     el.colSpan = extraStatsOn ? 17 : 10;
   });
+  // Expand main content width when extra stats are shown
+  document.querySelector('main').style.maxWidth = extraStatsOn ? '100%' : '';
+  document.querySelector('.header-inner').style.maxWidth = extraStatsOn ? '100%' : '';
   if (extraStatsOn && !extraStatsFetching && Object.keys(extraStatsCache).length < mergedData.length) {
     fetchExtraStats();
   }
@@ -939,7 +942,11 @@ document.querySelectorAll('#main-table thead th').forEach(th => {
   if (!col || th.classList.contains('no-sort')) return;
   th.addEventListener('click', () => {
     if (sortState.col === col) sortState.asc = !sortState.asc;
-    else { sortState.col = col; sortState.asc = col==='ppRank'||col==='eloRank'||col==='name'; }
+    else {
+      sortState.col = col;
+      // ascending first: rank cols, name, time cols (lower = better)
+      sortState.asc = col==='ppRank' || col==='eloRank' || col==='name' || col==='bestTime' || col==='avgTime' || col==='losses';
+    }
     document.querySelectorAll('#main-table thead th').forEach(t => {
       t.classList.remove('sorted');
       const ic = t.querySelector('.sort-icon');
