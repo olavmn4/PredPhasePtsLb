@@ -324,8 +324,8 @@
       <table id="main-table" style="display:none">
         <thead>
           <tr>
-            <th data-col="ppRank" class="sorted num">#<span class="sort-icon">↑</span></th>
-            <th data-col="phaseMove" style="width:52px">↑ phase<span class="sort-icon">↕</span></th>
+            <th data-col="ppRank" class="sorted num" style="width:32px">#<span class="sort-icon">↑</span></th>
+            <th data-col="phaseMove" style="width:36px"><span class="sort-icon" style="font-size:10px">↕</span></th>
             <th data-col="name">player</th>
             <th data-col="pred" class="num">pred pts<span class="sort-icon">↕</span></th>
             <th data-col="cur" class="num">current pts<span class="sort-icon">↕</span></th>
@@ -1014,7 +1014,8 @@ function renderTable() {
 document.querySelectorAll('#main-table thead th').forEach(th => {
   const col = th.dataset.col;
   if (!col || th.classList.contains('no-sort')) return;
-  th.addEventListener('click', () => {
+  th.addEventListener('click', e => {
+    if (e.target.closest('.col-mode-toggle')) return; // ignore toggle clicks
     if (sortState.col === col) sortState.asc = !sortState.asc;
     else {
       sortState.col = col;
