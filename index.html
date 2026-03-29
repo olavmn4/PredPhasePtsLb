@@ -1054,6 +1054,8 @@ document.getElementById('main-table').addEventListener('click', e => {
   toggle.classList.toggle('total', isTotal);
   renderTable();
 });
+
+document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
