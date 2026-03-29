@@ -320,7 +320,8 @@
     </div>
     <div class="table-wrap">
       <div class="state-msg" id="main-loading"><div class="spinner"></div>fetching leaderboard…</div>
-      <div class="table-scroll">
+      <div id="top-scroll-bar" style="overflow-x:auto;overflow-y:hidden;height:8px;display:none"><div id="top-scroll-inner"></div></div>
+      <div class="table-scroll" id="table-scroll-div">
       <table id="main-table" style="display:none">
         <thead>
           <tr>
@@ -1848,6 +1849,29 @@ document.getElementById('hist-top100-btn').addEventListener('click', () => {
   renderHistoryChart();
 });
 
+
+// Sync top scrollbar with table
+(function() {
+  const topBar = document.getElementById('top-scroll-bar');
+  const topInner = document.getElementById('top-scroll-inner');
+  const tableDiv = document.getElementById('table-scroll-div');
+
+  function syncTopBar() {
+    const table = document.getElementById('main-table');
+    if (!table || table.style.display === 'none') return;
+    const w = table.scrollWidth;
+    topInner.style.width = w + 'px';
+    topBar.style.display = w > tableDiv.clientWidth ? 'block' : 'none';
+  }
+
+  topBar.addEventListener('scroll', () => { tableDiv.scrollLeft = topBar.scrollLeft; });
+  tableDiv.addEventListener('scroll', () => { topBar.scrollLeft = tableDiv.scrollLeft; });
+
+  // Re-sync whenever table content changes
+  const obs = new MutationObserver(syncTopBar);
+  obs.observe(document.getElementById('main-tbody'), { childList: true });
+  window.addEventListener('resize', syncTopBar);
+})();
 
 fetchAll(true);
 </script>
