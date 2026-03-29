@@ -342,6 +342,7 @@
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
             <th class="no-sort">to qualify</th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
+            <th data-col="helmHue" class="num" id="helm-hue-th" title="sort by average helm color" style="cursor:pointer">🌈<span class="sort-icon">↕</span></th>
             <th data-col="winRate"        class="num extra-col" style="display:none" data-ekey="winRate">win rate<br><span class="col-mode-toggle" data-key="winRate">S10</span><span class="sort-icon">↕</span></th>
             <th data-col="wins"           class="num extra-col" style="display:none" data-ekey="wins">wins<br><span class="col-mode-toggle" data-key="wins">S10</span><span class="sort-icon">↕</span></th>
             <th data-col="losses"         class="num extra-col" style="display:none" data-ekey="losses">losses<br><span class="col-mode-toggle" data-key="losses">S10</span><span class="sort-icon">↕</span></th>
@@ -922,6 +923,7 @@ function getRows() {
     else if (col==='eloRank')   { va=a.eloRk;        vb=b.eloRk; }
     else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
+    else if (col==='helmHue')    { va=helmHueCache[a.uuid]??-1; vb=helmHueCache[b.uuid]??-1; }
     else if (col==='winRate')       { va=getExtraVal(a.uuid,'winRate')??-1;       vb=getExtraVal(b.uuid,'winRate')??-1; }
     else if (col==='wins')          { va=getExtraVal(a.uuid,'wins')??-1;           vb=getExtraVal(b.uuid,'wins')??-1; }
     else if (col==='losses')        { va=getExtraVal(a.uuid,'losses')??-1;         vb=getExtraVal(b.uuid,'losses')??-1; }
@@ -981,6 +983,7 @@ function renderTable() {
       <td class="num"><span class="mono" style="color:var(--muted);font-size:12px">${u.eloRk ?? '—'}</span></td>
       <td>${qualPill(u.qualData)}</td>
       <td class="num"><span class="mono last-played-cell" style="font-size:11px;color:var(--muted)">${fmtAgo(u.lastPlayed)}</span></td>
+      <td class="num">${(() => { const h = helmHueCache[u.uuid]; if (h == null) return '<span style="color:var(--muted);font-size:10px">—</span>'; if (h < 0) return '<span style="color:var(--muted);font-size:10px">—</span>'; return `<div style="width:18px;height:10px;background:hsl(${h},70%,55%);display:inline-block;border-radius:2px" title="hue ${h}°"></div>`; })()}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'winRate', v => v.toFixed(1)+'%')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'wins')}</td>
       <td class="num extra-col" style="display:${extraStatsOn?'':'none'}">${extraStatCell(u.uuid,'losses')}</td>
@@ -1001,7 +1004,7 @@ function renderTable() {
         if (u.predPP >= playoffsThresholdPP && (!next || next.predPP < playoffsThresholdPP)) {
           shownPlayoffs = true;
           html += `<tr class="threshold-row threshold-playoffs">
-            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
+            <td colspan="${extraStatsOn ? 23 : 11}" class="threshold-colspan">── top 12 · auto-qualify for playoffs ──────────────────────────────────</td>
           </tr>`;
         }
       }
@@ -1009,7 +1012,7 @@ function renderTable() {
         if (u.predPP >= lcqThresholdPP && (!next || next.predPP < lcqThresholdPP)) {
           shownLCQ = true;
           html += `<tr class="threshold-row threshold-lcq">
-            <td colspan="${extraStatsOn ? 22 : 10}" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
+            <td colspan="${extraStatsOn ? 23 : 11}" class="threshold-colspan">── top 100 · invited to last-chance qualifier (lcq) ──────────────────</td>
           </tr>`;
         }
       }
@@ -1071,6 +1074,15 @@ document.getElementById('extra-mode-all-btn').addEventListener('click', () => {
     t.classList.toggle('total', isTotal);
   });
   renderTable();
+});
+
+document.getElementById('helm-hue-th').addEventListener('click', e => {
+  if (sortState.col === 'helmHue') {
+    sortState.asc = !sortState.asc;
+    renderTable();
+  } else {
+    loadAllHelmHues();
+  }
 });
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -1618,6 +1630,53 @@ const playerColor = (() => {
   let i = 0;
   return uuid => { if (!map[uuid]) map[uuid] = HISTORY_PALETTE[i++ % HISTORY_PALETTE.length]; return map[uuid]; };
 })();
+
+let helmHueCache = {}; // uuid → hue 0-360, -1 if failed
+
+async function fetchHelmHue(uuid) {
+  if (helmHueCache[uuid] !== undefined) return;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/16`;
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i+3] > 128) { r += d[i]; g += d[i+1]; b += d[i+2]; n++; }
+        }
+        if (!n) { helmHueCache[uuid] = -1; resolve(); return; }
+        r /= n; g /= n; b /= n;
+        // RGB to hue
+        const max = Math.max(r,g,b), min = Math.min(r,g,b), d2 = max - min;
+        let h = 0;
+        if (d2) {
+          if (max===r) h = ((g-b)/d2 + 6) % 6;
+          else if (max===g) h = (b-r)/d2 + 2;
+          else h = (r-g)/d2 + 4;
+          h *= 60;
+        }
+        helmHueCache[uuid] = Math.round(h);
+      } catch { helmHueCache[uuid] = -1; }
+      resolve();
+    };
+    img.onerror = () => { helmHueCache[uuid] = -1; resolve(); };
+  });
+}
+
+async function loadAllHelmHues() {
+  const btn = document.getElementById('helm-hue-th');
+  if (btn) btn.textContent = '🌈 loading…';
+  const promises = mergedData.map(u => fetchHelmHue(u.uuid));
+  await Promise.all(promises);
+  if (btn) btn.innerHTML = '🌈<span class="sort-icon">↕</span>';
+  sortState.col = 'helmHue'; sortState.asc = true;
+  renderTable();
+}
 
 function updateLegendHighlight(activeIdx) {
   document.querySelectorAll('.hist-legend-item').forEach(el => {
