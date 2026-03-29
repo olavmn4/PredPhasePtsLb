@@ -818,12 +818,33 @@ document.getElementById('extra-stats-btn').addEventListener('click', () => {
   renderTable();
 });
 
+function extraStatColor(key, value) {
+  const all = Object.values(extraStatsCache).map(s => s[key]).filter(v => v != null && v > 0);
+  if (all.length < 2) return 'var(--muted)';
+  const min = Math.min(...all);
+  const max = Math.max(...all);
+  if (min === max) return 'var(--muted)';
+
+  // For time-based stats (lower = better), invert the ratio
+  const lowerIsBetter = key === 'bestTime' || key === 'avgTime' || key === 'losses';
+  const ratio = lowerIsBetter
+    ? 1 - (value - min) / (max - min)
+    : (value - min) / (max - min);
+
+  // ratio 0 = worst (red), 0.5 = average (yellow), 1 = best (green)
+  if (ratio >= 0.75) return '#4ade80';
+  if (ratio >= 0.5)  return `hsl(${Math.round(60 + (ratio - 0.5) * 2 * 60)}, 80%, 65%)`;
+  if (ratio >= 0.25) return `hsl(${Math.round((ratio - 0.25) * 4 * 60)}, 80%, 65%)`;
+  return '#f87171';
+}
+
 function extraStatCell(uuid, key, fmt = v => v) {
   const s = extraStatsCache[uuid];
-  const style = 'font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--muted)';
-  if (!s) return `<span style="${style}">…</span>`;
+  if (!s) return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)">…</span>`;
   const v = s[key];
-  return `<span style="${style}">${v != null ? fmt(v) : '—'}</span>`;
+  if (v == null) return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)">—</span>`;
+  const color = extraStatColor(key, v);
+  return `<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${color};font-weight:500">${fmt(v)}</span>`;
 }
 
 function getRows() {
