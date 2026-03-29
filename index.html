@@ -1638,7 +1638,7 @@ async function fetchHelmHue(uuid) {
   return new Promise(resolve => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/16`;
+    img.src = `https://images.weserv.nl/?url=minotar.net/helm/${uuid.replace(/-/g,'')}/16`;
     img.onload = () => {
       try {
         const c = document.createElement('canvas');
