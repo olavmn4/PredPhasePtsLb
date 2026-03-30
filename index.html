@@ -468,6 +468,7 @@
       <button class="chart-tab" data-chart="gap">Qual gap</button>
       <button class="chart-tab" data-chart="pprank">PP rank</button>
       <button class="chart-tab" data-chart="phase">Phase points</button>
+      <button id="modal-load-all-matches" style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;cursor:pointer">load all S10 matches</button>
     </div>
     <div id="modal-chart-wrap">
       <div class="state-msg" id="modal-chart-loading"><div class="spinner"></div>loading…</div>
@@ -1606,6 +1607,40 @@ function renderChart(uuid, type, row) {
   }
 }
 
+let modalAllMatchesLoaded = false;
+
+async function fetchAllMatches(uuid) {
+  const btn = document.getElementById('modal-load-all-matches');
+  if (btn) { btn.textContent = 'loading…'; btn.disabled = true; }
+
+  let allMatches = [...modalMatches]; // start with already-fetched 100
+  let before = allMatches.length ? allMatches[allMatches.length - 1].id : null;
+
+  while (true) {
+    const url = `https://api.mcsrranked.com/users/${uuid}/matches?count=100&type=2&season=10${before ? `&before=${before}` : ''}`;
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      if (j.status !== 'success' || !j.data?.length) break;
+      allMatches = [...allMatches, ...j.data];
+      if (btn) btn.textContent = `loading… ${allMatches.length} matches`;
+      if (j.data.length < 100) break;
+      before = j.data[j.data.length - 1].id;
+      await new Promise(r => setTimeout(r, 100));
+    } catch { break; }
+  }
+
+  modalMatches = allMatches;
+  modalAllMatchesLoaded = true;
+  if (btn) { btn.textContent = `${allMatches.length} matches loaded`; btn.disabled = true; btn.style.color = 'var(--accent)'; }
+  renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
+}
+
+document.getElementById('modal-load-all-matches').addEventListener('click', () => {
+  const uuid = modalUser?.uuid;
+  if (uuid && !modalAllMatchesLoaded) fetchAllMatches(uuid);
+});
+
 document.querySelectorAll('.chart-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     activeChartTab = tab.dataset.chart;
@@ -1632,7 +1667,7 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   document.body.style.overflow = '';
   if (modalChart) { modalChart.destroy(); modalChart = null; }
-  modalMatches = []; modalUser = null;
+  modalMatches = []; modalUser = null; modalAllMatchesLoaded = false;
 }
 
 let historyChart = null;
