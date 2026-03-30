@@ -1475,6 +1475,77 @@ function renderChart(uuid, type, row) {
     const maxVal = Math.max(...validData);
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
+    const phaseColors = ['#60a5fa', '#f59e0b', '#a78bfa']; // P1, P2, P3
+
+    const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
+      const idx = filteredDates.findIndex(d => d > ph.t);
+      if (idx < 0) return null;
+      const eloAtEnd = idx > 0 ? filteredData[idx - 1] : null;
+      return { ph, idx, eloAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
+    }).filter(Boolean);
+
+    const phaseDrawPlugin = {
+      id: 'phaseLines',
+      afterDraw(chart) {
+        const ctx2 = chart.ctx;
+        const { top, bottom } = chart.chartArea;
+        const xScale = chart.scales.x;
+
+        phaseLines.forEach(({ ph, idx, eloAtEnd, color, fromTop }) => {
+          const x = xScale.getPixelForValue(idx);
+          if (x < chart.chartArea.left || x > chart.chartArea.right) return;
+
+          // Draw dashed line
+          ctx2.save();
+          ctx2.strokeStyle = color;
+          ctx2.lineWidth = 1;
+          ctx2.setLineDash([4, 3]);
+          ctx2.globalAlpha = 0.5;
+          ctx2.beginPath();
+          ctx2.moveTo(x, top);
+          ctx2.lineTo(x, bottom);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          ctx2.globalAlpha = 1;
+
+          // Label box — alternate top/bottom
+          const label = ph.label;
+          const subLabel = eloAtEnd ? `${eloAtEnd} elo` : '';
+          ctx2.font = "bold 9px 'IBM Plex Mono', monospace";
+          const lw = Math.max(ctx2.measureText(label).width, ctx2.measureText(subLabel).width);
+          const pad = 6;
+          const bw = lw + pad * 2;
+          const bh = subLabel ? 30 : 18;
+          let bx = x + 5;
+          if (bx + bw > chart.chartArea.right) bx = x - bw - 5;
+          const by = fromTop ? top + 6 : bottom - bh - 6;
+
+          // Box background + border
+          ctx2.fillStyle = 'rgba(13,14,15,0.85)';
+          ctx2.strokeStyle = color;
+          ctx2.lineWidth = 1;
+          ctx2.beginPath();
+          ctx2.rect(bx, by, bw, bh);
+          ctx2.fill();
+          ctx2.stroke();
+
+          // Label text
+          ctx2.fillStyle = color;
+          ctx2.textBaseline = 'top';
+          ctx2.font = "bold 9px 'IBM Plex Mono', monospace";
+          ctx2.fillText(label, bx + pad, by + 5);
+
+          if (subLabel) {
+            ctx2.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx2.font = "9px 'IBM Plex Mono', monospace";
+            ctx2.fillText(subLabel, bx + pad, by + 17);
+          }
+
+          ctx2.restore();
+        });
+      }
+    };
+
     const phaseTooltipPlugin = {
       id: 'phaseTooltip',
       afterDraw(chart) {
@@ -1501,7 +1572,7 @@ function renderChart(uuid, type, row) {
 
     modalChart = new Chart(ctx, {
       type: 'line',
-      plugins: [phaseTooltipPlugin],
+      plugins: [phaseDrawPlugin, phaseTooltipPlugin],
       data: { labels: filteredLabels, datasets: [{
         data: filteredData,
         borderColor: ctx => {
@@ -1523,33 +1594,6 @@ function renderChart(uuid, type, row) {
             title: i => `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
             label: i => ` ${i.raw} elo`,
           }},
-          annotation: {
-            annotations: Object.fromEntries(
-              S10_PHASE_ENDS
-                .map(ph => {
-                  const idx = filteredDates.findIndex(d => d > ph.t);
-                  if (idx < 0) return null;
-                  const lastBeforeEnd = idx > 0 ? filteredData[idx - 1] : null;
-                  return [`phase${ph.phase}`, {
-                    type: 'line', scaleID: 'x', value: idx,
-                    borderColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderDash: [4, 3],
-                    label: { display: false },
-                    enter({ chart, element }) {
-                      const x = element.x;
-                      const y = chart.chartArea.top + 10;
-                      const text = lastBeforeEnd ? `${ph.label} · ${lastBeforeEnd} elo` : ph.label;
-                      chart.__phaseTooltip = { x, y, text };
-                      chart.draw();
-                    },
-                    leave({ chart }) {
-                      chart.__phaseTooltip = null;
-                      chart.draw();
-                    },
-                  }];
-                })
-                .filter(Boolean)
-            )
-          },
         },
         scales: {
           ...opts.scales,
