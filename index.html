@@ -1480,6 +1480,10 @@ function renderChart(uuid, type, row) {
     const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
       const idx = filteredDates.findIndex(d => d > ph.t);
       if (idx < 0) return null;
+      // Only show if the phase end actually falls within the visible date range
+      const firstDate = filteredDates[0];
+      const lastDate = filteredDates[filteredDates.length - 1];
+      if (ph.t < firstDate || ph.t > lastDate) return null;
       const eloAtEnd = idx > 0 ? filteredData[idx - 1] : null;
       return { ph, idx, eloAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
     }).filter(Boolean);
