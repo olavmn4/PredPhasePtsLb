@@ -1497,15 +1497,24 @@ function renderChart(uuid, type, row) {
             annotations: Object.fromEntries(
               S10_PHASE_ENDS
                 .map(ph => {
-                  // Find index of first match after phase end
                   const idx = filteredDates.findIndex(d => d > ph.t);
                   if (idx < 0) return null;
+                  // Find the elo at phase end — last match before the phase end
+                  const lastBeforeEnd = idx > 0 ? filteredData[idx - 1] : null;
                   return [`phase${ph.phase}`, {
                     type: 'line', scaleID: 'x', value: idx,
-                    borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderDash: [4, 3],
-                    label: { content: ph.label, enabled: true, position: 'start',
+                    borderColor: 'rgba(255,255,255,0.25)', borderWidth: 1, borderDash: [4, 3],
+                    label: {
+                      content: lastBeforeEnd ? `${ph.label} · ${lastBeforeEnd} elo` : ph.label,
+                      display: true,
+                      position: 'start',
                       font: { family: 'IBM Plex Mono', size: 9 },
-                      color: 'rgba(255,255,255,0.4)', backgroundColor: 'transparent', padding: 2 }
+                      color: 'rgba(255,255,255,0.55)',
+                      backgroundColor: 'rgba(0,0,0,0.6)',
+                      padding: { x: 5, y: 3 },
+                      borderRadius: 0,
+                    },
+                    enter({ element }) { element.label.options.display = true; },
                   }];
                 })
                 .filter(Boolean)
