@@ -487,6 +487,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script>
 const PP_TABLE = [
   [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
@@ -1434,13 +1435,13 @@ function renderChart(uuid, type, row) {
   const opts = chartBaseOpts();
 
   if (type === 'elo') {
-    const ms = [...modalMatches].reverse();
+    const source = showAllMatches ? modalMatches : modalMatches.slice(0, 100);
+    const ms = [...source].reverse();
     const data = ms.map(m => {
       const c = m.changes?.find(c => c.uuid === uuid);
       return c ? c.eloRate + c.change : null;
     });
 
-    // Filter out placement matches (post-game elo of 0 or null)
     const filtered = ms.reduce((acc, m, i) => {
       if (data[i] && data[i] > 0) acc.push({ m, eloVal: data[i] });
       return acc;
@@ -1448,6 +1449,7 @@ function renderChart(uuid, type, row) {
 
     const filteredData   = filtered.map(f => f.eloVal);
     const filteredLabels = filtered.map(f => fmtAgo(f.m.date));
+    const filteredDates  = filtered.map(f => f.m.date); // unix seconds
 
     const TIERS = [
       { min: 2000, label: 'Netherite', color: '#a78bfa' },
@@ -1491,7 +1493,24 @@ function renderChart(uuid, type, row) {
             title: i => `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
             label: i => ` ${i.raw} elo`,
           }},
-          annotation: undefined,
+          annotation: {
+            annotations: Object.fromEntries(
+              S10_PHASE_ENDS
+                .map(ph => {
+                  // Find index of first match after phase end
+                  const idx = filteredDates.findIndex(d => d > ph.t);
+                  if (idx < 0) return null;
+                  return [`phase${ph.phase}`, {
+                    type: 'line', scaleID: 'x', value: idx,
+                    borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderDash: [4, 3],
+                    label: { content: ph.label, enabled: true, position: 'start',
+                      font: { family: 'IBM Plex Mono', size: 9 },
+                      color: 'rgba(255,255,255,0.4)', backgroundColor: 'transparent', padding: 2 }
+                  }];
+                })
+                .filter(Boolean)
+            )
+          },
         },
         scales: {
           ...opts.scales,
@@ -1608,6 +1627,14 @@ function renderChart(uuid, type, row) {
 }
 
 let modalAllMatchesLoaded = false;
+let showAllMatches = false;
+
+// Approximate S10 phase end timestamps (unix seconds)
+const S10_PHASE_ENDS = [
+  { phase: 1, t: 1769990400, label: 'P1 end' },
+  { phase: 2, t: 1772409600, label: 'P2 end' },
+  { phase: 3, t: 1775088000, label: 'P3 end' },
+];
 
 async function fetchAllMatches(uuid) {
   const btn = document.getElementById('modal-load-all-matches');
@@ -1632,13 +1659,23 @@ async function fetchAllMatches(uuid) {
 
   modalMatches = allMatches;
   modalAllMatchesLoaded = true;
-  if (btn) { btn.textContent = `${allMatches.length} matches loaded`; btn.disabled = true; btn.style.color = 'var(--accent)'; }
+  showAllMatches = true;
+  if (btn) { btn.textContent = `all S10 (${allMatches.length})`; btn.disabled = false; btn.style.color = 'var(--accent)'; }
   renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
 }
 
 document.getElementById('modal-load-all-matches').addEventListener('click', () => {
   const uuid = modalUser?.uuid;
-  if (uuid && !modalAllMatchesLoaded) fetchAllMatches(uuid);
+  if (!uuid) return;
+  if (!modalAllMatchesLoaded) {
+    fetchAllMatches(uuid);
+  } else {
+    showAllMatches = !showAllMatches;
+    const btn = document.getElementById('modal-load-all-matches');
+    btn.textContent = showAllMatches ? `all S10 (${modalMatches.length})` : 'last 100';
+    btn.style.color = showAllMatches ? 'var(--accent)' : 'var(--muted)';
+    renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
+  }
 });
 
 document.querySelectorAll('.chart-tab').forEach(tab => {
@@ -1667,7 +1704,7 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   document.body.style.overflow = '';
   if (modalChart) { modalChart.destroy(); modalChart = null; }
-  modalMatches = []; modalUser = null; modalAllMatchesLoaded = false;
+  modalMatches = []; modalUser = null; modalAllMatchesLoaded = false; showAllMatches = false;
 }
 
 let historyChart = null;
