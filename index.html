@@ -469,6 +469,7 @@
       <button class="chart-tab" data-chart="pprank">PP rank</button>
       <button class="chart-tab" data-chart="phase">Phase points</button>
       <button id="modal-load-all-matches" style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;cursor:pointer">load all S10 matches</button>
+      <button id="modal-elo-time-toggle" style="font-family:'IBM Plex Mono',monospace;font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;cursor:pointer" title="toggle between match index and time axis">by match</button>
     </div>
     <div id="modal-chart-wrap">
       <div class="state-msg" id="modal-chart-loading"><div class="spinner"></div>loading…</div>
@@ -1247,9 +1248,11 @@ async function openModal(uuid) {
   document.body.style.overflow = 'hidden';
 
   // Reset match toggle state for every new player
-  modalMatches = []; modalAllMatchesLoaded = false; showAllMatches = false;
+  modalMatches = []; modalAllMatchesLoaded = false; showAllMatches = false; eloChartTimeMode = false;
   const loadBtn = document.getElementById('modal-load-all-matches');
   if (loadBtn) { loadBtn.textContent = 'load all S10 matches'; loadBtn.disabled = false; loadBtn.style.color = 'var(--muted)'; }
+  const timeBtn = document.getElementById('modal-elo-time-toggle');
+  if (timeBtn) { timeBtn.textContent = 'by match'; timeBtn.style.color = 'var(--muted)'; }
 
   document.getElementById('modal-stats-grid').innerHTML = '';
   document.getElementById('modal-qual-path').classList.remove('visible');
@@ -1487,12 +1490,12 @@ function renderChart(uuid, type, row) {
     const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
       const idx = filteredDates.findIndex(d => d > ph.t);
       if (idx < 0) return null;
-      // Only show if the phase end actually falls within the visible date range
       const firstDate = filteredDates[0];
       const lastDate = filteredDates[filteredDates.length - 1];
       if (ph.t < firstDate || ph.t > lastDate) return null;
       const eloAtEnd = idx > 0 ? filteredData[idx - 1] : null;
-      return { ph, idx, eloAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
+      const xValue = eloChartTimeMode ? ph.t * 1000 : idx;
+      return { ph, idx, xValue, eloAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
     }).filter(Boolean);
 
     const phaseDrawPlugin = {
@@ -1502,8 +1505,8 @@ function renderChart(uuid, type, row) {
         const { top, bottom } = chart.chartArea;
         const xScale = chart.scales.x;
 
-        phaseLines.forEach(({ ph, idx, eloAtEnd, color, fromTop }) => {
-          const x = xScale.getPixelForValue(idx);
+        phaseLines.forEach(({ ph, xValue, eloAtEnd, color, fromTop }) => {
+          const x = xScale.getPixelForValue(xValue);
           if (x < chart.chartArea.left || x > chart.chartArea.right) return;
 
           // Draw dashed line
@@ -1584,8 +1587,8 @@ function renderChart(uuid, type, row) {
     modalChart = new Chart(ctx, {
       type: 'line',
       plugins: [phaseDrawPlugin, phaseTooltipPlugin],
-      data: { labels: filteredLabels, datasets: [{
-        data: filteredData,
+      data: { labels: eloChartTimeMode ? undefined : filteredLabels, datasets: [{
+        data: eloChartTimeMode ? filteredDates.map((d, i) => ({ x: d * 1000, y: filteredData[i] })) : filteredData,
         borderColor: ctx => {
           const v = ctx.p1?.parsed?.y;
           return v != null ? tierColor(v) : '#4ade80';
@@ -1602,12 +1605,20 @@ function renderChart(uuid, type, row) {
         plugins: {
           ...opts.plugins,
           tooltip: { ...opts.plugins.tooltip, callbacks: {
-            title: i => `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
-            label: i => ` ${i.raw} elo`,
+            title: i => eloChartTimeMode
+              ? new Date(i[0].parsed.x).toLocaleDateString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+              : `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
+            label: i => ` ${eloChartTimeMode ? i.parsed.y : i.raw} elo`,
           }},
         },
         scales: {
           ...opts.scales,
+          x: eloChartTimeMode ? {
+            type: 'time',
+            time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } },
+            ticks: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
+            grid: { color: '#1e2022' },
+          } : opts.scales.x,
           y: {
             ...opts.scales.y,
             afterDataLimits: scale => {
@@ -1722,6 +1733,7 @@ function renderChart(uuid, type, row) {
 
 let modalAllMatchesLoaded = false;
 let showAllMatches = false;
+let eloChartTimeMode = false; // false = by match index, true = by real time
 
 // Approximate S10 phase end timestamps (unix seconds)
 const S10_PHASE_ENDS = [
@@ -1770,6 +1782,16 @@ document.getElementById('modal-load-all-matches').addEventListener('click', () =
     btn.style.color = showAllMatches ? 'var(--accent)' : 'var(--muted)';
     renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
   }
+});
+
+document.getElementById('modal-elo-time-toggle').addEventListener('click', () => {
+  const uuid = modalUser?.uuid;
+  if (!uuid || activeChartTab !== 'elo') return;
+  eloChartTimeMode = !eloChartTimeMode;
+  const btn = document.getElementById('modal-elo-time-toggle');
+  btn.textContent = eloChartTimeMode ? 'by time' : 'by match';
+  btn.style.color = eloChartTimeMode ? 'var(--accent)' : 'var(--muted)';
+  renderChart(uuid, 'elo', mergedData.find(u => u.uuid === uuid) ?? null);
 });
 
 document.querySelectorAll('.chart-tab').forEach(tab => {
