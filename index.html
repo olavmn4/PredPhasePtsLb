@@ -587,15 +587,22 @@ function fmtCountdown(ts) {
   return `phase ends in <strong>${mins}m</strong>`;
 }
 
-const HIDDEN_PLAYERS = new Set(['KenanKardes','Watermelon1708','nyachloe','Hinart']);
+const HIDDEN_PLAYERS = new Set(['KenanKardes','LoveWalter','nyachloe','Hinart']);
 
 function buildMerged() {
+  // eloMap for DISPLAY: use raw API ranks so displayed elo rank is unchanged
   const eloMap = {};
   for (const u of rawElo) eloMap[u.uuid] = { eloRate: u.eloRate, eloRank: u.eloRank };
 
+  // Corrected ranks excluding banned players — used ONLY in simulateQual calculations
+  const visibleElo = rawElo.filter(u => !HIDDEN_PLAYERS.has(u.nickname));
+  const eloSortedVisible = [...visibleElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
+  const correctedRankMap = {}; // uuid → rank among visible players only
+  eloSortedVisible.forEach((u, i) => { correctedRankMap[u.uuid] = i + 1; });
+
+  // eloByRank built from visible players so p3Points lookups are accurate
   eloByRank = {};
-  const eloSorted = [...rawElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
-  eloSorted.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
+  eloSortedVisible.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
 
   const sorted = [...rawPhase]
     .filter(u => !HIDDEN_PLAYERS.has(u.nickname))
@@ -615,8 +622,8 @@ function buildMerged() {
   const playoffsThresholdPP = sorted.length >= 12  ? sorted[11].predPhasePoint : null;
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
-  const zeroPPPlayers = rawElo
-    .filter(u => !phaseUuids.has(u.uuid) && !HIDDEN_PLAYERS.has(u.nickname))
+  const zeroPPPlayers = visibleElo
+    .filter(u => !phaseUuids.has(u.uuid))
     .map(u => ({
       uuid: u.uuid,
       nickname: u.nickname,
@@ -638,9 +645,9 @@ function buildMerged() {
     const predPP    = u.predPhasePoint;
     const gain      = predPP - currentPP;
     const ppRk      = u._ppRank;
-    const eloRk     = elo.eloRank;
+    const eloRk     = elo.eloRank;        // API rank — used for display only
+    const simEloRk  = correctedRankMap[u.uuid] ?? eloRk; // corrected rank — used in simulateQual
     const eloRate   = elo.eloRate ?? 0;
-
 
     function simulateQual(targetPosition) {
       const boundaryIdx       = targetPosition - 1;
@@ -649,12 +656,12 @@ function buildMerged() {
 
       const boundaryUuid      = boundaryPlayer.uuid;
       const boundaryCurrentPP = boundaryPlayer.seasonResult?.phasePoint ?? 0;
-      const boundaryEloRk     = eloMap[boundaryUuid]?.eloRank ?? boundaryPlayer.eloRank ?? targetPosition;
+      const boundaryEloRk     = correctedRankMap[boundaryUuid] ?? eloMap[boundaryUuid]?.eloRank ?? targetPosition;
 
-      for (let r = eloRk; r >= 1; r--) {
+      for (let r = simEloRk; r >= 1; r--) {
         const myNewPredPP = currentPP + p3Points(r);
         let boundaryNewEloRk = boundaryEloRk;
-        if (boundaryEloRk >= r && boundaryEloRk < eloRk) boundaryNewEloRk = boundaryEloRk + 1;
+        if (boundaryEloRk >= r && boundaryEloRk < simEloRk) boundaryNewEloRk = boundaryEloRk + 1;
         const boundaryNewPredPP = boundaryCurrentPP + p3Points(boundaryNewEloRk);
 
         if (myNewPredPP > boundaryNewPredPP) {
