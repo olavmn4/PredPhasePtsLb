@@ -673,7 +673,9 @@ function buildMerged() {
           const boundaryNewElo = eloByRank[boundaryNewEloRk] ?? 0;
           const targetElo      = eloByRank[r] ?? 0;
           if (targetElo > boundaryNewElo) {
-            return { gap: Math.max(0, targetElo - eloRate), rank: r };
+            // Need strictly more elo than boundary — if already at targetElo, need +1
+            const gap = targetElo > eloRate ? targetElo - eloRate : targetElo === eloRate ? 1 : 0;
+            return { gap, rank: r };
           }
         }
       }
