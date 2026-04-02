@@ -294,13 +294,14 @@
   <div class="header-inner">
     <div class="header-top">
       <h1>MCSR Ranked</h1>
-      <span class="season-tag">S10 · Phase 3</span>
+      <span class="season-tag">S10 · Phase 4</span>
     </div>
     <div class="header-meta">
       <span class="live-dot"><span class="dot"></span> live</span>
       <span id="player-count">— players</span>
       <span id="phase-countdown"></span>
       <span>updated <span id="last-updated">—</span></span>
+      <span style="color:var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;margin-left:auto">@Prolav</span>
       <button class="btn-refresh" id="btn-refresh" title="Refresh now">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
@@ -378,6 +379,8 @@
     <div class="about-content">
       <h2>MCSR Ranked S10 Phase Points Tracker</h2>
       Each season is split into 4 monthly phases. Your Elo rank at phase end earns Phase Points which accumulate across all phases. MSS tournament points are included in current totals.
+      <br><br>
+      P1, P2, and P3 are now locked. We are currently in <strong>Phase 4</strong> — the final phase of Season 10.
 
       <h2>qualification</h2>
       <div class="legend">
@@ -401,15 +404,15 @@
       · <strong>Rank 2–12</strong> — Elo needed to move up one seed (beat the player above)<br>
       · <strong>Rank 1</strong> — nothing to gain<br>
       <br>
-      The gap is calculated using the Phase 3 points table: we find the lowest Elo rank at which
-      <code style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent)">currentPP + phase3Points[rank]</code>
+      The gap is calculated using the Phase 4 points table: we find the lowest Elo rank at which
+      <code style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent)">currentPP + phase4Points[rank]</code>
       meets the target, then show the Elo difference to the player currently at that rank.
 
       <h2>phase points table</h2>
       <div class="pp-table-wrap">
         <table class="pp-table">
           <thead>
-            <tr><th>Rank</th><th>Phase 1</th><th>Phase 2</th><th class="cur-phase">Phase 3</th><th>Phase 4</th></tr>
+            <tr><th>Rank</th><th>Phase 1</th><th>Phase 2</th><th>Phase 3</th><th class="cur-phase">Phase 4</th></tr>
           </thead>
           <tbody id="pp-ref-tbody"></tbody>
         </table>
@@ -480,7 +483,7 @@
 
 
 <footer>
-  <span>MCSR Ranked S10 · Phase Points Leaderboard</span>
+  <span>MCSR Ranked S10 · Phase 4 · Phase Points Leaderboard</span>
   <span>data: <a href="https://api.mcsrranked.com" target="_blank">api.mcsrranked.com</a></span>
 </footer>
 
@@ -518,16 +521,21 @@ const PP_TABLE = [
   [97,3,3,4,5],[98,3,3,4,5],[99,3,3,4,5],[100,3,3,4,5],
 ];
 const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
+const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+const P3_ENDED = Math.floor(Date.now() / 1000) > 1775088000;
+// Use the current active phase's points table for qual calculations
+const currentPhasePoints = P3_ENDED ? p4Points : p3Points;
 
 document.getElementById('pp-ref-tbody').innerHTML =
   PP_TABLE.map(([r,p1,p2,p3,p4]) =>
-    `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td class="cur-phase">${p3}</td><td>${p4}</td></tr>`
+    `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td>${p3}</td><td class="cur-phase">${p4}</td></tr>`
   ).join('');
 
 
 
 let rawElo      = [];
 let eloByRank   = {};
+let playoffsCutoffPP = 159; // updated from live data in buildMerged
 let phaseEndsAt = null;
 let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
@@ -621,6 +629,7 @@ function buildMerged() {
 
   const lcqThresholdPP    = sorted.length >= 100 ? sorted[99].predPhasePoint : null;
   const playoffsThresholdPP = sorted.length >= 12  ? sorted[11].predPhasePoint : null;
+  if (playoffsThresholdPP !== null) playoffsCutoffPP = playoffsThresholdPP;
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
   const zeroPPPlayers = visibleElo
@@ -660,10 +669,10 @@ function buildMerged() {
       const boundaryEloRk     = correctedRankMap[boundaryUuid] ?? eloMap[boundaryUuid]?.eloRank ?? targetPosition;
 
       for (let r = simEloRk; r >= 1; r--) {
-        const myNewPredPP = currentPP + p3Points(r);
+        const myNewPredPP = currentPP + currentPhasePoints(r);
         let boundaryNewEloRk = boundaryEloRk;
         if (boundaryEloRk >= r && boundaryEloRk < simEloRk) boundaryNewEloRk = boundaryEloRk + 1;
-        const boundaryNewPredPP = boundaryCurrentPP + p3Points(boundaryNewEloRk);
+        const boundaryNewPredPP = boundaryCurrentPP + currentPhasePoints(boundaryNewEloRk);
 
         if (myNewPredPP > boundaryNewPredPP) {
           const targetElo = eloByRank[r] ?? 0;
@@ -750,7 +759,7 @@ function qualPill(q) {
 
   let mainPill;
   if (q.gap === null) {
-    const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
+    const msg = q.type === 'seed' ? 'currently unreachable' : 'currently unreachable';
     mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   } else if (q.gap === 0) {
     mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
@@ -1346,59 +1355,101 @@ function renderQualPath(row) {
   const el = document.getElementById('modal-qual-path');
   if (!row || row._isZeroPP) { el.classList.remove('visible'); return; }
 
-  const PLAYOFFS_TARGET = 159;
-  const currentPP = row.currentPP ?? 0;
-  const currentP3Rank = row.correctedEloRk ?? row.eloRk;
+  const PLAYOFFS_TARGET = playoffsCutoffPP;
+  const currentPP  = row.currentPP ?? 0;
+  const currentRk  = row.correctedEloRk ?? row.eloRk;
   const currentElo = row.eloRate ?? 0;
 
-  const p3Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
-  const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+  if (P3_ENDED) {
+    // P4 mode: show what total pts they'd reach at each P4 elo rank
+    const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+    const bestCase = currentPP + p4Pts(1);
 
-  const rows = [];
-  for (let r3 = 1; r3 <= 100; r3++) {
-    const ppAfterP3 = currentPP + p3Pts(r3);
-    const needed = PLAYOFFS_TARGET - ppAfterP3;
-    let worstP4;
-    if (needed <= 0) {
-      worstP4 = '✓ qualified';
-    } else {
-      worstP4 = null;
-      for (let r4 = 100; r4 >= 1; r4--) {
-        if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
-      }
-      if (!worstP4) {
-        if (r3 !== currentP3Rank) continue;
-        worstP4 = 'unreachable';
-      }
+    const rows = [];
+    for (let r4 = 1; r4 <= 100; r4++) {
+      const total = currentPP + p4Pts(r4);
+      const qualifies = total >= PLAYOFFS_TARGET;
+      const rankElo = eloByRank[r4] ?? 0;
+      const eloGap = r4 === currentRk ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
+      // skip rows that can't qualify and aren't current rank (keep a few below for context)
+      if (!qualifies && r4 > currentRk + 5 && total < PLAYOFFS_TARGET - 20) continue;
+      rows.push({ r4, total, qualifies, eloGap, isCurrent: r4 === currentRk });
     }
-    const rankElo = eloByRank[r3] ?? 0;
-    const eloGap = r3 === currentP3Rank ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
-    rows.push({ r3, ppAfterP3, worstP4, eloGap, isCurrent: r3 === currentP3Rank });
+
+    el.innerHTML = `
+      <div class="qual-path-label">playoffs path (target ${PLAYOFFS_TARGET} pts) — P4 · current rank highlighted${bestCase < PLAYOFFS_TARGET ? ' · cannot reach playoffs' : ''}</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
+        <table class="qual-path-table" style="width:100%">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr><th>P4 elo rank</th><th>elo gap</th><th>total pts</th><th>playoffs</th></tr>
+          </thead>
+          <tbody>${rows.map(r => {
+            const gapStr = r.eloGap === 0 ? '—' : r.eloGap > 0 ? `+${r.eloGap}` : `${r.eloGap}`;
+            const gapColor = r.eloGap === 0 ? 'var(--accent)' : r.eloGap > 0 ? 'var(--muted)' : '#4ade80';
+            const qualStr = r.qualifies ? '✓' : '✗';
+            const qualColor = r.qualifies ? 'var(--accent)' : '#f87171';
+            return `
+            <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
+              <td>${r.isCurrent ? '→ ' : ''}${r.r4}</td>
+              <td style="color:${gapColor}">${gapStr}</td>
+              <td>${r.total}</td>
+              <td style="color:${qualColor}">${qualStr}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } else {
+    // P3 mode (legacy): show P3 rank → pts after P3 → worst P4 rank needed
+    const p3Pts = currentPhasePoints;
+    const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+
+    const rows = [];
+    for (let r3 = 1; r3 <= 100; r3++) {
+      const ppAfterP3 = currentPP + p3Pts(r3);
+      const needed = PLAYOFFS_TARGET - ppAfterP3;
+      let worstP4;
+      if (needed <= 0) {
+        worstP4 = '✓ qualified';
+      } else {
+        worstP4 = null;
+        for (let r4 = 100; r4 >= 1; r4--) {
+          if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
+        }
+        if (!worstP4) {
+          if (r3 !== currentRk) continue;
+          worstP4 = 'unreachable';
+        }
+      }
+      const rankElo = eloByRank[r3] ?? 0;
+      const eloGap = r3 === currentRk ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
+      rows.push({ r3, ppAfterP3, worstP4, eloGap, isCurrent: r3 === currentRk });
+    }
+
+    el.innerHTML = `
+      <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts) — current P3 rank highlighted</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
+        <table class="qual-path-table" style="width:100%">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr><th>P3 elo rank</th><th>elo gap</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr>
+          </thead>
+          <tbody id="qual-path-tbody">${rows.map(r => {
+            const gapStr = r.eloGap === 0 ? '—' : r.eloGap > 0 ? `+${r.eloGap}` : `${r.eloGap}`;
+            const gapColor = r.eloGap === 0 ? 'var(--accent)' : r.eloGap > 0 ? 'var(--muted)' : '#4ade80';
+            return `
+            <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
+              <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
+              <td style="color:${gapColor}">${gapStr}</td>
+              <td>${r.ppAfterP3}</td>
+              <td>${r.worstP4}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>`;
   }
 
-  el.innerHTML = `
-    <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts) — your current P3 rank highlighted</div>
-    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
-      <table class="qual-path-table" style="width:100%">
-        <thead style="position:sticky;top:0;background:var(--bg2)">
-          <tr><th>P3 elo rank</th><th>elo gap</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr>
-        </thead>
-        <tbody id="qual-path-tbody">${rows.map(r => {
-          const gapStr = r.eloGap === 0 ? '—' : r.eloGap > 0 ? `+${r.eloGap}` : `${r.eloGap}`;
-          const gapColor = r.eloGap === 0 ? 'var(--accent)' : r.eloGap > 0 ? 'var(--muted)' : '#4ade80';
-          return `
-          <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
-            <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
-            <td style="color:${gapColor}">${gapStr}</td>
-            <td>${r.ppAfterP3}</td>
-            <td>${r.worstP4}</td>
-          </tr>`;
-        }).join('')}
-        </tbody>
-      </table>
-    </div>`;
   el.classList.add('visible');
-
   setTimeout(() => {
     const cur = document.getElementById('qual-path-current');
     if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -1501,6 +1552,7 @@ function renderChart(uuid, type, row) {
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
     const phaseColors = ['#60a5fa', '#f59e0b', '#a78bfa']; // P1, P2, P3
+    const phaseApiData = modalUser?.seasonResult?.phases ?? [];
 
     const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
       const idx = filteredDates.findIndex(d => d > ph.t);
@@ -1510,7 +1562,9 @@ function renderChart(uuid, type, row) {
       if (ph.t < firstDate || ph.t > lastDate) return null;
       const eloAtEnd = idx > 0 ? filteredData[idx - 1] : null;
       const xValue = eloChartTimeMode ? ph.t * 1000 : idx;
-      return { ph, idx, xValue, eloAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
+      const phaseInfo = phaseApiData.find(p => p.phase === ph.phase);
+      const rankAtEnd = phaseInfo?.eloRank ?? null;
+      return { ph, idx, xValue, eloAtEnd, rankAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
     }).filter(Boolean);
 
     const phaseDrawPlugin = {
@@ -1520,7 +1574,7 @@ function renderChart(uuid, type, row) {
         const { top, bottom } = chart.chartArea;
         const xScale = chart.scales.x;
 
-        phaseLines.forEach(({ ph, xValue, eloAtEnd, color, fromTop }) => {
+        phaseLines.forEach(({ ph, xValue, eloAtEnd, rankAtEnd, color, fromTop }) => {
           const x = xScale.getPixelForValue(xValue);
           if (x < chart.chartArea.left || x > chart.chartArea.right) return;
 
@@ -1540,11 +1594,14 @@ function renderChart(uuid, type, row) {
           // Label box — alternate top/bottom
           const label = ph.label;
           const subLabel = eloAtEnd ? `${eloAtEnd} elo` : '';
+          const rankLabel = rankAtEnd ? `rank ${rankAtEnd}` : '';
+          const lines = [label, subLabel, rankLabel].filter(Boolean);
           ctx2.font = "bold 9px 'IBM Plex Mono', monospace";
-          const lw = Math.max(ctx2.measureText(label).width, ctx2.measureText(subLabel).width);
+          const lw = Math.max(...lines.map(l => ctx2.measureText(l).width));
           const pad = 6;
           const bw = lw + pad * 2;
-          const bh = subLabel ? 30 : 18;
+          const lineH = 12;
+          const bh = pad + lines.length * lineH;
           let bx = x + 5;
           if (bx + bw > chart.chartArea.right) bx = x - bw - 5;
           const by = fromTop ? top + 6 : bottom - bh - 6;
@@ -1559,16 +1616,12 @@ function renderChart(uuid, type, row) {
           ctx2.stroke();
 
           // Label text
-          ctx2.fillStyle = color;
           ctx2.textBaseline = 'top';
-          ctx2.font = "bold 9px 'IBM Plex Mono', monospace";
-          ctx2.fillText(label, bx + pad, by + 5);
-
-          if (subLabel) {
-            ctx2.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx2.font = "9px 'IBM Plex Mono', monospace";
-            ctx2.fillText(subLabel, bx + pad, by + 17);
-          }
+          lines.forEach((line, li) => {
+            ctx2.font = li === 0 ? "bold 9px 'IBM Plex Mono', monospace" : "9px 'IBM Plex Mono', monospace";
+            ctx2.fillStyle = li === 0 ? color : 'rgba(255,255,255,0.55)';
+            ctx2.fillText(line, bx + pad, by + pad / 2 + li * lineH);
+          });
 
           ctx2.restore();
         });
@@ -1727,21 +1780,61 @@ function renderChart(uuid, type, row) {
 
   } else if (type === 'phase') {
     const phases = modalUser?.seasonResult?.phases ?? [];
-    const p1 = phases.find(p=>p.phase===1)?.point ?? 0;
-    const p2 = phases.find(p=>p.phase===2)?.point ?? 0;
-    const p3gain = row?.gain ?? 0;
-    const mss = Math.max(0, (row?.predPP ?? 0) - p1 - p2 - p3gain);
-    const labels = ['Phase 1','Phase 2', ...(mss > 0 ? ['MSS'] : []), 'Phase 3 (pred)'];
-    const data   = [p1, p2, ...(mss > 0 ? [mss] : []), p3gain];
+    const p1    = phases.find(p=>p.phase===1)?.point ?? 0;
+    const p2    = phases.find(p=>p.phase===2)?.point ?? 0;
+    const p3api = phases.find(p=>p.phase===3)?.point ?? null;
+    const p3    = p3api !== null ? p3api : (row?.gain ?? 0);
+    const p3ended = p3api !== null;
+
+    // MSS: pts not attributable to any phase (tournament bonus pts)
+    // = total locked pts minus all phase pts
+    const lockedTotal = modalUser?.seasonResult?.last?.phasePoint ?? (p1 + p2 + p3);
+    const mss = Math.max(0, lockedTotal - p1 - p2 - p3);
+
+    // P4: predPP - everything already locked
+    const p4pred = Math.max(0, (row?.predPP ?? 0) - lockedTotal);
+
+    const p1rank = phases.find(p=>p.phase===1)?.eloRank;
+    const p2rank = phases.find(p=>p.phase===2)?.eloRank;
+    const p3rank = phases.find(p=>p.phase===3)?.eloRank;
+
+    const labels = [
+      p1rank ? `P1 (rank ${p1rank})` : 'P1',
+      p2rank ? `P2 (rank ${p2rank})` : 'P2',
+      ...(mss > 0 ? ['MSS'] : []),
+      p3ended ? (p3rank ? `P3 (rank ${p3rank})` : 'P3') : 'P3 (pred)',
+      p3ended ? 'P4 (pred)' : '',
+    ].filter(Boolean);
+
+    const data = [
+      p1,
+      p2,
+      ...(mss > 0 ? [mss] : []),
+      p3,
+      ...(p3ended ? [p4pred] : []),
+    ];
+
     const colors = [
-      'rgba(74,222,128,.6)', 'rgba(74,222,128,.6)',
-      ...(mss > 0 ? ['rgba(251,191,36,.6)'] : []),
+      'rgba(74,222,128,.7)',
+      'rgba(74,222,128,.7)',
+      ...(mss > 0 ? ['rgba(251,191,36,.7)'] : []),
+      p3ended ? 'rgba(74,222,128,.7)' : 'rgba(74,222,128,.35)',
       'rgba(74,222,128,.25)',
     ];
+
     modalChart = new Chart(ctx, {
       type: 'bar',
       data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 0 }]},
-      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, beginAtZero: true }}},
+      options: {
+        ...opts,
+        plugins: {
+          ...opts.plugins,
+          tooltip: { ...opts.plugins.tooltip, callbacks: {
+            label: i => ` ${i.raw} pts`,
+          }},
+        },
+        scales: { ...opts.scales, y: { ...opts.scales.y, beginAtZero: true }},
+      },
     });
   }
 }
