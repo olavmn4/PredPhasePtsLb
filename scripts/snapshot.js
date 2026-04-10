@@ -7,9 +7,10 @@ const PP_TABLE = [
   11,10,10,10,9,9,9,8,8,8,8,8,7,7,7,7,7,7,7,6,6,6,6,6,6,5,5,
   5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
 ];
-const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1] : 0;
+// Use P4 points now that P3 has ended
+const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r - 1] : 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const MAX_LP_FETCHES = 30;
+const MAX_LP_FETCHES = 60; // increased to handle more new players
 const MAX_SNAPSHOTS = 2000;
 const HISTORY_FILE = 'history.json';
 
@@ -31,11 +32,18 @@ async function main() {
   const eloJson   = await eloRes.json();
 
   if (phaseJson.status !== 'success' || eloJson.status !== 'success') {
+    console.error('Phase API:', phaseJson.status, JSON.stringify(phaseJson).slice(0, 200));
+    console.error('Elo API:', eloJson.status, JSON.stringify(eloJson).slice(0, 200));
     throw new Error('MCSR API returned non-success');
   }
 
-  const rawPhase = phaseJson.data.users || [];
-  const rawElo   = eloJson.data.users   || [];
+  // Handle both old (data.users) and new (data) array formats
+  const rawPhase = phaseJson.data?.users ?? phaseJson.data ?? [];
+  const rawElo   = eloJson.data?.users   ?? eloJson.data   ?? [];
+
+  if (!Array.isArray(rawPhase) || !Array.isArray(rawElo)) {
+    throw new Error(`Unexpected API shape — phase: ${typeof rawPhase}, elo: ${typeof rawElo}`);
+  }
 
   const eloSorted = [...rawElo].sort((a, b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
   const eloByRank = {};
@@ -56,10 +64,10 @@ async function main() {
     const bCurrentPP = boundary.seasonResult?.phasePoint ?? 0;
     const bEloRk = eloMap[boundary.uuid]?.eloRank ?? boundary.eloRank ?? targetPosition;
     for (let r = eloRk; r >= 1; r--) {
-      const myNew = currentPP + p3Points(r);
+      const myNew = currentPP + p4Points(r);
       let bNewEloRk = bEloRk;
       if (bEloRk >= r && bEloRk < eloRk) bNewEloRk++;
-      const bNew = bCurrentPP + p3Points(bNewEloRk);
+      const bNew = bCurrentPP + p4Points(bNewEloRk);
       if (myNew > bNew) return Math.max(0, (eloByRank[r] ?? 0) - eloRate);
       if (myNew === bNew && (eloByRank[r] ?? 0) > (eloByRank[bNewEloRk] ?? 0))
         return Math.max(0, (eloByRank[r] ?? 0) - eloRate);
@@ -73,32 +81,51 @@ async function main() {
     try { history = JSON.parse(readFileSync(HISTORY_FILE, 'utf8')); } catch {}
   }
 
-  // Get previous snapshot for last-played cache
-  const prevPlayers = history.length ? history[history.length - 1].players : [];
+  // Get previous snapshot for last-played cache — search last 5 snapshots for best data
   const prevMap = {};
-  for (const p of prevPlayers) prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
+  const recentSnapshots = history.slice(-5).reverse();
+  for (const snap of recentSnapshots) {
+    for (const p of (snap.players ?? [])) {
+      if (!prevMap[p.uuid]) {
+        prevMap[p.uuid] = { eloRate: p.eloRate, lastPlayed: p.lastPlayed ?? null };
+      }
+    }
+  }
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
+  const eloOnlyUuids = rawElo.filter(u => !phaseUuids.has(u.uuid)).map(u => u.uuid);
+
   const allUuids = [
     ...sorted.map(u => u.uuid),
-    ...rawElo.filter(u => !phaseUuids.has(u.uuid)).map(u => u.uuid),
+    ...eloOnlyUuids,
   ];
 
-  const needsFetch = [];
+  // Split into priority buckets:
+  // 1. Players whose elo changed (active, need fresh lastPlayed)
+  // 2. Players with no lastPlayed ever (never fetched — spread across runs)
+  const changedElo = [];
+  const neverFetched = [];
   for (const uuid of allUuids) {
     const prev = prevMap[uuid];
     const currElo = eloMap[uuid]?.eloRate ?? 0;
-    if (!prev || prev.lastPlayed === null) { needsFetch.push(uuid); continue; }
+    if (!prev || prev.lastPlayed === null) { neverFetched.push(uuid); continue; }
     const diff = currElo - prev.eloRate;
-    if (diff !== 0 && diff !== -5) needsFetch.push(uuid);
+    if (diff !== 0 && diff !== -5) changedElo.push(uuid);
   }
 
+  // Rotate neverFetched so we don't always fetch the same ones first
+  // Use current minute as offset so each run fetches a different slice
+  const rotateOffset = (Math.floor(Date.now() / 60000)) % Math.max(1, neverFetched.length);
+  const rotatedNever = [...neverFetched.slice(rotateOffset), ...neverFetched.slice(0, rotateOffset)];
+
+  const needsFetch = [...changedElo, ...rotatedNever];
   const toFetch = needsFetch.slice(0, MAX_LP_FETCHES);
-  console.log(`Fetching lastPlayed for ${toFetch.length}/${needsFetch.length} needed, reusing ${allUuids.length - needsFetch.length} from cache`);
+  const toFetchSet = new Set(toFetch);
+  console.log(`Fetching lastPlayed for ${toFetch.length} players (${changedElo.length} elo changed, ${Math.min(rotatedNever.length, MAX_LP_FETCHES - changedElo.length)} never fetched), reusing ${allUuids.length - toFetch.length} from cache`);
 
   const lastPlayedMap = {};
   for (const uuid of allUuids) {
-    if (!needsFetch.includes(uuid)) lastPlayedMap[uuid] = prevMap[uuid]?.lastPlayed ?? null;
+    if (!toFetchSet.has(uuid)) lastPlayedMap[uuid] = prevMap[uuid]?.lastPlayed ?? null;
   }
   for (const uuid of toFetch) {
     lastPlayedMap[uuid] = await fetchLastPlayed(uuid);
