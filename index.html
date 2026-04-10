@@ -195,8 +195,8 @@
   }
   #modal {
     background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 0; width: 100%; max-width: 620px;
-    max-height: 90vh; overflow-y: auto; padding: 24px; position: relative;
+    border-radius: 0; width: 100%; max-width: 820px;
+    max-height: 92vh; overflow-y: auto; padding: 24px; position: relative;
   }
   #modal-close {
     position: absolute; top: 14px; right: 14px;
@@ -238,7 +238,7 @@
   .chart-tab { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); padding: 6px 14px; cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; transition: all .15s; }
   .chart-tab:hover { color: var(--text); }
   .chart-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  #modal-chart-wrap { position: relative; height: 200px; display: flex; align-items: center; justify-content: center; }
+  #modal-chart-wrap { position: relative; height: 280px; display: flex; align-items: center; justify-content: center; }
   #modal-canvas { width: 100% !important; height: 100% !important; }
   #main-tbody tr:not(.threshold-row) { cursor: pointer; }
 
@@ -294,13 +294,14 @@
   <div class="header-inner">
     <div class="header-top">
       <h1>MCSR Ranked</h1>
-      <span class="season-tag">S10 · Phase 3</span>
+      <span class="season-tag">S10 · Phase 4</span>
     </div>
     <div class="header-meta">
       <span class="live-dot"><span class="dot"></span> live</span>
       <span id="player-count">— players</span>
       <span id="phase-countdown"></span>
       <span>updated <span id="last-updated">—</span></span>
+      <span style="color:var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;margin-left:auto">@Prolav</span>
       <button class="btn-refresh" id="btn-refresh" title="Refresh now">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
@@ -378,6 +379,8 @@
     <div class="about-content">
       <h2>MCSR Ranked S10 Phase Points Tracker</h2>
       Each season is split into 4 monthly phases. Your Elo rank at phase end earns Phase Points which accumulate across all phases. MSS tournament points are included in current totals.
+      <br><br>
+      P1, P2, and P3 are now locked. We are currently in <strong>Phase 4</strong> — the final phase of Season 10.
 
       <h2>qualification</h2>
       <div class="legend">
@@ -401,15 +404,15 @@
       · <strong>Rank 2–12</strong> — Elo needed to move up one seed (beat the player above)<br>
       · <strong>Rank 1</strong> — nothing to gain<br>
       <br>
-      The gap is calculated using the Phase 3 points table: we find the lowest Elo rank at which
-      <code style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent)">currentPP + phase3Points[rank]</code>
+      The gap is calculated using the Phase 4 points table: we find the lowest Elo rank at which
+      <code style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent)">currentPP + phase4Points[rank]</code>
       meets the target, then show the Elo difference to the player currently at that rank.
 
       <h2>phase points table</h2>
       <div class="pp-table-wrap">
         <table class="pp-table">
           <thead>
-            <tr><th>Rank</th><th>Phase 1</th><th>Phase 2</th><th class="cur-phase">Phase 3</th><th>Phase 4</th></tr>
+            <tr><th>Rank</th><th>Phase 1</th><th>Phase 2</th><th>Phase 3</th><th class="cur-phase">Phase 4</th></tr>
           </thead>
           <tbody id="pp-ref-tbody"></tbody>
         </table>
@@ -468,6 +471,8 @@
       <button class="chart-tab" data-chart="gap">Qual gap</button>
       <button class="chart-tab" data-chart="pprank">PP rank</button>
       <button class="chart-tab" data-chart="phase">Phase points</button>
+      <button id="modal-load-all-matches" style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;cursor:pointer">load all S10 matches</button>
+      <button id="modal-elo-time-toggle" style="font-family:'IBM Plex Mono',monospace;font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;cursor:pointer" title="toggle between match index and time axis">by match</button>
     </div>
     <div id="modal-chart-wrap">
       <div class="state-msg" id="modal-chart-loading"><div class="spinner"></div>loading…</div>
@@ -478,7 +483,7 @@
 
 
 <footer>
-  <span>MCSR Ranked S10 · Phase Points Leaderboard</span>
+  <span>MCSR Ranked S10 · Phase 4 · Phase Points Leaderboard</span>
   <span>data: <a href="https://api.mcsrranked.com" target="_blank">api.mcsrranked.com</a></span>
 </footer>
 
@@ -486,6 +491,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script>
 const PP_TABLE = [
   [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
@@ -515,16 +521,21 @@ const PP_TABLE = [
   [97,3,3,4,5],[98,3,3,4,5],[99,3,3,4,5],[100,3,3,4,5],
 ];
 const p3Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
+const p4Points = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+const P3_ENDED = Math.floor(Date.now() / 1000) > 1775088000;
+// Use the current active phase's points table for qual calculations
+const currentPhasePoints = P3_ENDED ? p4Points : p3Points;
 
 document.getElementById('pp-ref-tbody').innerHTML =
   PP_TABLE.map(([r,p1,p2,p3,p4]) =>
-    `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td class="cur-phase">${p3}</td><td>${p4}</td></tr>`
+    `<tr><td>${r}</td><td>${p1}</td><td>${p2}</td><td>${p3}</td><td class="cur-phase">${p4}</td></tr>`
   ).join('');
 
 
 
 let rawElo      = [];
 let eloByRank   = {};
+let playoffsCutoffPP = 159; // updated from live data in buildMerged
 let phaseEndsAt = null;
 let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
@@ -585,15 +596,22 @@ function fmtCountdown(ts) {
   return `phase ends in <strong>${mins}m</strong>`;
 }
 
-const HIDDEN_PLAYERS = new Set(['KenanKardes','Watermelon1708','nyachloe','Hinart']);
+const HIDDEN_PLAYERS = new Set(['KenanKardes','LoveWalter','nyachloe','Hinart']);
 
 function buildMerged() {
+  // eloMap for DISPLAY: use raw API ranks so displayed elo rank is unchanged
   const eloMap = {};
   for (const u of rawElo) eloMap[u.uuid] = { eloRate: u.eloRate, eloRank: u.eloRank };
 
+  // Corrected ranks excluding banned players — used ONLY in simulateQual calculations
+  const visibleElo = rawElo.filter(u => !HIDDEN_PLAYERS.has(u.nickname));
+  const eloSortedVisible = [...visibleElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
+  const correctedRankMap = {}; // uuid → rank among visible players only
+  eloSortedVisible.forEach((u, i) => { correctedRankMap[u.uuid] = i + 1; });
+
+  // eloByRank built from visible players so p3Points lookups are accurate
   eloByRank = {};
-  const eloSorted = [...rawElo].sort((a,b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
-  eloSorted.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
+  eloSortedVisible.forEach((u, i) => { eloByRank[i + 1] = u.eloRate ?? 0; });
 
   const sorted = [...rawPhase]
     .filter(u => !HIDDEN_PLAYERS.has(u.nickname))
@@ -611,10 +629,11 @@ function buildMerged() {
 
   const lcqThresholdPP    = sorted.length >= 100 ? sorted[99].predPhasePoint : null;
   const playoffsThresholdPP = sorted.length >= 12  ? sorted[11].predPhasePoint : null;
+  if (playoffsThresholdPP !== null) playoffsCutoffPP = playoffsThresholdPP;
 
   const phaseUuids = new Set(rawPhase.map(u => u.uuid));
-  const zeroPPPlayers = rawElo
-    .filter(u => !phaseUuids.has(u.uuid) && !HIDDEN_PLAYERS.has(u.nickname))
+  const zeroPPPlayers = visibleElo
+    .filter(u => !phaseUuids.has(u.uuid))
     .map(u => ({
       uuid: u.uuid,
       nickname: u.nickname,
@@ -636,9 +655,9 @@ function buildMerged() {
     const predPP    = u.predPhasePoint;
     const gain      = predPP - currentPP;
     const ppRk      = u._ppRank;
-    const eloRk     = elo.eloRank;
+    const eloRk     = elo.eloRank;        // API rank — used for display only
+    const simEloRk  = correctedRankMap[u.uuid] ?? eloRk; // corrected rank — used in simulateQual
     const eloRate   = elo.eloRate ?? 0;
-
 
     function simulateQual(targetPosition) {
       const boundaryIdx       = targetPosition - 1;
@@ -647,13 +666,13 @@ function buildMerged() {
 
       const boundaryUuid      = boundaryPlayer.uuid;
       const boundaryCurrentPP = boundaryPlayer.seasonResult?.phasePoint ?? 0;
-      const boundaryEloRk     = eloMap[boundaryUuid]?.eloRank ?? boundaryPlayer.eloRank ?? targetPosition;
+      const boundaryEloRk     = correctedRankMap[boundaryUuid] ?? eloMap[boundaryUuid]?.eloRank ?? targetPosition;
 
-      for (let r = eloRk; r >= 1; r--) {
-        const myNewPredPP = currentPP + p3Points(r);
+      for (let r = simEloRk; r >= 1; r--) {
+        const myNewPredPP = currentPP + currentPhasePoints(r);
         let boundaryNewEloRk = boundaryEloRk;
-        if (boundaryEloRk >= r && boundaryEloRk < eloRk) boundaryNewEloRk = boundaryEloRk + 1;
-        const boundaryNewPredPP = boundaryCurrentPP + p3Points(boundaryNewEloRk);
+        if (boundaryEloRk >= r && boundaryEloRk < simEloRk) boundaryNewEloRk = boundaryEloRk + 1;
+        const boundaryNewPredPP = boundaryCurrentPP + currentPhasePoints(boundaryNewEloRk);
 
         if (myNewPredPP > boundaryNewPredPP) {
           const targetElo = eloByRank[r] ?? 0;
@@ -663,7 +682,14 @@ function buildMerged() {
           const boundaryNewElo = eloByRank[boundaryNewEloRk] ?? 0;
           const targetElo      = eloByRank[r] ?? 0;
           if (targetElo > boundaryNewElo) {
-            return { gap: Math.max(0, targetElo - eloRate), rank: r };
+            // Need strictly more elo than boundary — if already at targetElo, need +1 to reach rank above
+            if (targetElo > eloRate) {
+              return { gap: targetElo - eloRate, rank: r };
+            } else {
+              // Already at this rank's elo — need to reach the rank above
+              const aboveElo = eloByRank[r - 1] ?? targetElo + 1;
+              return { gap: aboveElo - eloRate, rank: r - 1 };
+            }
           }
         }
       }
@@ -693,6 +719,7 @@ function buildMerged() {
       nickname: u.nickname,
       country: u.country,
       eloRate, eloRk,
+      correctedEloRk: correctedRankMap[u.uuid] ?? eloRk,
       currentPP, predPP, gain,
       ppRk,
       qualData,
@@ -732,7 +759,7 @@ function qualPill(q) {
 
   let mainPill;
   if (q.gap === null) {
-    const msg = q.type === 'seed' ? 'unreachable' : 'unreachable this phase';
+    const msg = q.type === 'seed' ? 'currently unreachable' : 'currently unreachable';
     mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.55">${msg}</span></span>`;
   } else if (q.gap === 0) {
     mainPill = `<span class="qual-pill ${klass}">${label} <span style="opacity:.7">qualified</span></span>`;
@@ -1237,6 +1264,13 @@ async function openModal(uuid) {
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
+  // Reset match toggle state for every new player
+  modalMatches = []; modalAllMatchesLoaded = false; showAllMatches = false; eloChartTimeMode = false;
+  const loadBtn = document.getElementById('modal-load-all-matches');
+  if (loadBtn) { loadBtn.textContent = 'load all S10 matches'; loadBtn.disabled = false; loadBtn.style.color = 'var(--muted)'; }
+  const timeBtn = document.getElementById('modal-elo-time-toggle');
+  if (timeBtn) { timeBtn.textContent = 'by match'; timeBtn.style.color = 'var(--muted)'; }
+
   document.getElementById('modal-stats-grid').innerHTML = '';
   document.getElementById('modal-qual-path').classList.remove('visible');
   document.getElementById('modal-last-match').classList.remove('visible');
@@ -1321,52 +1355,101 @@ function renderQualPath(row) {
   const el = document.getElementById('modal-qual-path');
   if (!row || row._isZeroPP) { el.classList.remove('visible'); return; }
 
-  const PLAYOFFS_TARGET = 159;
-  const currentPP = row.currentPP ?? 0;
-  const currentP3Rank = row.eloRk;
+  const PLAYOFFS_TARGET = playoffsCutoffPP;
+  const currentPP  = row.currentPP ?? 0;
+  const currentRk  = row.correctedEloRk ?? row.eloRk;
+  const currentElo = row.eloRate ?? 0;
 
-  const p3Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][3] : 0;
-  const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+  if (P3_ENDED) {
+    // P4 mode: show what total pts they'd reach at each P4 elo rank
+    const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+    const bestCase = currentPP + p4Pts(1);
 
-  const rows = [];
-  for (let r3 = 1; r3 <= 100; r3++) {
-    const ppAfterP3 = currentPP + p3Pts(r3);
-    const needed = PLAYOFFS_TARGET - ppAfterP3;
-    let worstP4;
-    if (needed <= 0) {
-      worstP4 = '✓ qualified';
-    } else {
-      worstP4 = null;
-      for (let r4 = 100; r4 >= 1; r4--) {
-        if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
-      }
-      if (!worstP4) {
-        if (r3 !== currentP3Rank) continue;
-        worstP4 = 'unreachable';
-      }
+    const rows = [];
+    for (let r4 = 1; r4 <= 100; r4++) {
+      const total = currentPP + p4Pts(r4);
+      const qualifies = total >= PLAYOFFS_TARGET;
+      const rankElo = eloByRank[r4] ?? 0;
+      const eloGap = r4 === currentRk ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
+      // skip rows that can't qualify and aren't current rank (keep a few below for context)
+      if (!qualifies && r4 > currentRk + 5 && total < PLAYOFFS_TARGET - 20) continue;
+      rows.push({ r4, total, qualifies, eloGap, isCurrent: r4 === currentRk });
     }
-    rows.push({ r3, ppAfterP3, worstP4, isCurrent: r3 === currentP3Rank });
+
+    el.innerHTML = `
+      <div class="qual-path-label">playoffs path (target ${PLAYOFFS_TARGET} pts) — P4 · current rank highlighted${bestCase < PLAYOFFS_TARGET ? ' · cannot reach playoffs' : ''}</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
+        <table class="qual-path-table" style="width:100%">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr><th>P4 elo rank</th><th>elo gap</th><th>total pts</th><th>playoffs</th></tr>
+          </thead>
+          <tbody>${rows.map(r => {
+            const gapStr = r.eloGap === 0 ? '—' : r.eloGap > 0 ? `+${r.eloGap}` : `${r.eloGap}`;
+            const gapColor = r.eloGap === 0 ? 'var(--accent)' : r.eloGap > 0 ? 'var(--muted)' : '#4ade80';
+            const qualStr = r.qualifies ? '✓' : '✗';
+            const qualColor = r.qualifies ? 'var(--accent)' : '#f87171';
+            return `
+            <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
+              <td>${r.isCurrent ? '→ ' : ''}${r.r4}</td>
+              <td style="color:${gapColor}">${gapStr}</td>
+              <td>${r.total}</td>
+              <td style="color:${qualColor}">${qualStr}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } else {
+    // P3 mode (legacy): show P3 rank → pts after P3 → worst P4 rank needed
+    const p3Pts = currentPhasePoints;
+    const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
+
+    const rows = [];
+    for (let r3 = 1; r3 <= 100; r3++) {
+      const ppAfterP3 = currentPP + p3Pts(r3);
+      const needed = PLAYOFFS_TARGET - ppAfterP3;
+      let worstP4;
+      if (needed <= 0) {
+        worstP4 = '✓ qualified';
+      } else {
+        worstP4 = null;
+        for (let r4 = 100; r4 >= 1; r4--) {
+          if (p4Pts(r4) >= needed) { worstP4 = `rank ${r4}`; break; }
+        }
+        if (!worstP4) {
+          if (r3 !== currentRk) continue;
+          worstP4 = 'unreachable';
+        }
+      }
+      const rankElo = eloByRank[r3] ?? 0;
+      const eloGap = r3 === currentRk ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
+      rows.push({ r3, ppAfterP3, worstP4, eloGap, isCurrent: r3 === currentRk });
+    }
+
+    el.innerHTML = `
+      <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts) — current P3 rank highlighted</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
+        <table class="qual-path-table" style="width:100%">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr><th>P3 elo rank</th><th>elo gap</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr>
+          </thead>
+          <tbody id="qual-path-tbody">${rows.map(r => {
+            const gapStr = r.eloGap === 0 ? '—' : r.eloGap > 0 ? `+${r.eloGap}` : `${r.eloGap}`;
+            const gapColor = r.eloGap === 0 ? 'var(--accent)' : r.eloGap > 0 ? 'var(--muted)' : '#4ade80';
+            return `
+            <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
+              <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
+              <td style="color:${gapColor}">${gapStr}</td>
+              <td>${r.ppAfterP3}</td>
+              <td>${r.worstP4}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>`;
   }
 
-  el.innerHTML = `
-    <div class="qual-path-label">playoffs path (target ~${PLAYOFFS_TARGET} pts) — your current P3 rank highlighted</div>
-    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border)">
-      <table class="qual-path-table" style="width:100%">
-        <thead style="position:sticky;top:0;background:var(--bg2)">
-          <tr><th>P3 elo rank</th><th>pts after P3</th><th>worst P4 rank for playoffs</th></tr>
-        </thead>
-        <tbody id="qual-path-tbody">${rows.map(r => `
-          <tr class="${r.isCurrent ? 'current-row' : ''}" ${r.isCurrent ? 'id="qual-path-current"' : ''}>
-            <td>${r.isCurrent ? '→ ' : ''}${r.r3}</td>
-            <td>${r.ppAfterP3}</td>
-            <td>${r.worstP4}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
   el.classList.add('visible');
-
-  // Scroll to current rank row
   setTimeout(() => {
     const cur = document.getElementById('qual-path-current');
     if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -1433,13 +1516,13 @@ function renderChart(uuid, type, row) {
   const opts = chartBaseOpts();
 
   if (type === 'elo') {
-    const ms = [...modalMatches].reverse();
+    const source = showAllMatches ? modalMatches : modalMatches.slice(0, 100);
+    const ms = [...source].reverse();
     const data = ms.map(m => {
       const c = m.changes?.find(c => c.uuid === uuid);
       return c ? c.eloRate + c.change : null;
     });
 
-    // Filter out placement matches (post-game elo of 0 or null)
     const filtered = ms.reduce((acc, m, i) => {
       if (data[i] && data[i] > 0) acc.push({ m, eloVal: data[i] });
       return acc;
@@ -1447,6 +1530,7 @@ function renderChart(uuid, type, row) {
 
     const filteredData   = filtered.map(f => f.eloVal);
     const filteredLabels = filtered.map(f => fmtAgo(f.m.date));
+    const filteredDates  = filtered.map(f => f.m.date); // unix seconds
 
     const TIERS = [
       { min: 2000, label: 'Netherite', color: '#a78bfa' },
@@ -1467,10 +1551,112 @@ function renderChart(uuid, type, row) {
     const maxVal = Math.max(...validData);
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
+    const phaseColors = ['#60a5fa', '#f59e0b', '#a78bfa']; // P1, P2, P3
+    const phaseApiData = modalUser?.seasonResult?.phases ?? [];
+
+    const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
+      const idx = filteredDates.findIndex(d => d > ph.t);
+      if (idx < 0) return null;
+      const firstDate = filteredDates[0];
+      const lastDate = filteredDates[filteredDates.length - 1];
+      if (ph.t < firstDate || ph.t > lastDate) return null;
+      const eloAtEnd = idx > 0 ? filteredData[idx - 1] : null;
+      const xValue = eloChartTimeMode ? ph.t * 1000 : idx;
+      const phaseInfo = phaseApiData.find(p => p.phase === ph.phase);
+      const rankAtEnd = phaseInfo?.eloRank ?? null;
+      return { ph, idx, xValue, eloAtEnd, rankAtEnd, color: phaseColors[i], fromTop: i % 2 === 0 };
+    }).filter(Boolean);
+
+    const phaseDrawPlugin = {
+      id: 'phaseLines',
+      afterDraw(chart) {
+        const ctx2 = chart.ctx;
+        const { top, bottom } = chart.chartArea;
+        const xScale = chart.scales.x;
+
+        phaseLines.forEach(({ ph, xValue, eloAtEnd, rankAtEnd, color, fromTop }) => {
+          const x = xScale.getPixelForValue(xValue);
+          if (x < chart.chartArea.left || x > chart.chartArea.right) return;
+
+          // Draw dashed line
+          ctx2.save();
+          ctx2.strokeStyle = color;
+          ctx2.lineWidth = 1;
+          ctx2.setLineDash([4, 3]);
+          ctx2.globalAlpha = 0.5;
+          ctx2.beginPath();
+          ctx2.moveTo(x, top);
+          ctx2.lineTo(x, bottom);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          ctx2.globalAlpha = 1;
+
+          // Label box — alternate top/bottom
+          const label = ph.label;
+          const subLabel = eloAtEnd ? `${eloAtEnd} elo` : '';
+          const rankLabel = rankAtEnd ? `rank ${rankAtEnd}` : '';
+          const lines = [label, subLabel, rankLabel].filter(Boolean);
+          ctx2.font = "bold 9px 'IBM Plex Mono', monospace";
+          const lw = Math.max(...lines.map(l => ctx2.measureText(l).width));
+          const pad = 6;
+          const bw = lw + pad * 2;
+          const lineH = 12;
+          const bh = pad + lines.length * lineH;
+          let bx = x + 5;
+          if (bx + bw > chart.chartArea.right) bx = x - bw - 5;
+          const by = fromTop ? top + 6 : bottom - bh - 6;
+
+          // Box background + border
+          ctx2.fillStyle = 'rgba(13,14,15,0.85)';
+          ctx2.strokeStyle = color;
+          ctx2.lineWidth = 1;
+          ctx2.beginPath();
+          ctx2.rect(bx, by, bw, bh);
+          ctx2.fill();
+          ctx2.stroke();
+
+          // Label text
+          ctx2.textBaseline = 'top';
+          lines.forEach((line, li) => {
+            ctx2.font = li === 0 ? "bold 9px 'IBM Plex Mono', monospace" : "9px 'IBM Plex Mono', monospace";
+            ctx2.fillStyle = li === 0 ? color : 'rgba(255,255,255,0.55)';
+            ctx2.fillText(line, bx + pad, by + pad / 2 + li * lineH);
+          });
+
+          ctx2.restore();
+        });
+      }
+    };
+
+    const phaseTooltipPlugin = {
+      id: 'phaseTooltip',
+      afterDraw(chart) {
+        const tip = chart.__phaseTooltip;
+        if (!tip) return;
+        const ctx2 = chart.ctx;
+        ctx2.save();
+        ctx2.font = "11px 'IBM Plex Mono', monospace";
+        const tw = ctx2.measureText(tip.text).width;
+        const pad = 8;
+        const bw = tw + pad * 2, bh = 24;
+        let bx = tip.x + 8;
+        if (bx + bw > chart.chartArea.right) bx = tip.x - bw - 8;
+        ctx2.fillStyle = 'rgba(13,14,15,0.92)';
+        ctx2.strokeStyle = '#2a2d31';
+        ctx2.lineWidth = 1;
+        ctx2.beginPath(); ctx2.rect(bx, tip.y, bw, bh); ctx2.fill(); ctx2.stroke();
+        ctx2.fillStyle = '#e2e8f0';
+        ctx2.textBaseline = 'middle';
+        ctx2.fillText(tip.text, bx + pad, tip.y + bh / 2);
+        ctx2.restore();
+      }
+    };
+
     modalChart = new Chart(ctx, {
       type: 'line',
-      data: { labels: filteredLabels, datasets: [{
-        data: filteredData,
+      plugins: [phaseDrawPlugin, phaseTooltipPlugin],
+      data: { labels: eloChartTimeMode ? undefined : filteredLabels, datasets: [{
+        data: eloChartTimeMode ? filteredDates.map((d, i) => ({ x: d * 1000, y: filteredData[i] })) : filteredData,
         borderColor: ctx => {
           const v = ctx.p1?.parsed?.y;
           return v != null ? tierColor(v) : '#4ade80';
@@ -1487,13 +1673,20 @@ function renderChart(uuid, type, row) {
         plugins: {
           ...opts.plugins,
           tooltip: { ...opts.plugins.tooltip, callbacks: {
-            title: i => `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
-            label: i => ` ${i.raw} elo`,
+            title: i => eloChartTimeMode
+              ? new Date(i[0].parsed.x).toLocaleDateString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+              : `Match ${i[0].dataIndex + 1}  ·  ${i[0].label}`,
+            label: i => ` ${eloChartTimeMode ? i.parsed.y : i.raw} elo`,
           }},
-          annotation: undefined,
         },
         scales: {
           ...opts.scales,
+          x: eloChartTimeMode ? {
+            type: 'time',
+            time: { tooltipFormat: 'MMM d, HH:mm', displayFormats: { hour: 'MMM d HH:mm', day: 'MMM d' } },
+            ticks: { color: '#525861', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
+            grid: { color: '#1e2022' },
+          } : opts.scales.x,
           y: {
             ...opts.scales.y,
             afterDataLimits: scale => {
@@ -1587,24 +1780,127 @@ function renderChart(uuid, type, row) {
 
   } else if (type === 'phase') {
     const phases = modalUser?.seasonResult?.phases ?? [];
-    const p1 = phases.find(p=>p.phase===1)?.point ?? 0;
-    const p2 = phases.find(p=>p.phase===2)?.point ?? 0;
-    const p3gain = row?.gain ?? 0;
-    const mss = Math.max(0, (row?.predPP ?? 0) - p1 - p2 - p3gain);
-    const labels = ['Phase 1','Phase 2', ...(mss > 0 ? ['MSS'] : []), 'Phase 3 (pred)'];
-    const data   = [p1, p2, ...(mss > 0 ? [mss] : []), p3gain];
+    const p1    = phases.find(p=>p.phase===1)?.point ?? 0;
+    const p2    = phases.find(p=>p.phase===2)?.point ?? 0;
+    const p3api = phases.find(p=>p.phase===3)?.point ?? null;
+    const p3    = p3api !== null ? p3api : (row?.gain ?? 0);
+    const p3ended = p3api !== null;
+
+    // MSS: pts not attributable to any phase (tournament bonus pts)
+    // = total locked pts minus all phase pts
+    const lockedTotal = modalUser?.seasonResult?.last?.phasePoint ?? (p1 + p2 + p3);
+    const mss = Math.max(0, lockedTotal - p1 - p2 - p3);
+
+    // P4: predPP - everything already locked
+    const p4pred = Math.max(0, (row?.predPP ?? 0) - lockedTotal);
+
+    const p1rank = phases.find(p=>p.phase===1)?.eloRank;
+    const p2rank = phases.find(p=>p.phase===2)?.eloRank;
+    const p3rank = phases.find(p=>p.phase===3)?.eloRank;
+
+    const labels = [
+      p1rank ? `P1 (rank ${p1rank})` : 'P1',
+      p2rank ? `P2 (rank ${p2rank})` : 'P2',
+      ...(mss > 0 ? ['MSS'] : []),
+      p3ended ? (p3rank ? `P3 (rank ${p3rank})` : 'P3') : 'P3 (pred)',
+      p3ended ? 'P4 (pred)' : '',
+    ].filter(Boolean);
+
+    const data = [
+      p1,
+      p2,
+      ...(mss > 0 ? [mss] : []),
+      p3,
+      ...(p3ended ? [p4pred] : []),
+    ];
+
     const colors = [
-      'rgba(74,222,128,.6)', 'rgba(74,222,128,.6)',
-      ...(mss > 0 ? ['rgba(251,191,36,.6)'] : []),
+      'rgba(74,222,128,.7)',
+      'rgba(74,222,128,.7)',
+      ...(mss > 0 ? ['rgba(251,191,36,.7)'] : []),
+      p3ended ? 'rgba(74,222,128,.7)' : 'rgba(74,222,128,.35)',
       'rgba(74,222,128,.25)',
     ];
+
     modalChart = new Chart(ctx, {
       type: 'bar',
       data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 0 }]},
-      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, beginAtZero: true }}},
+      options: {
+        ...opts,
+        plugins: {
+          ...opts.plugins,
+          tooltip: { ...opts.plugins.tooltip, callbacks: {
+            label: i => ` ${i.raw} pts`,
+          }},
+        },
+        scales: { ...opts.scales, y: { ...opts.scales.y, beginAtZero: true }},
+      },
     });
   }
 }
+
+let modalAllMatchesLoaded = false;
+let showAllMatches = false;
+let eloChartTimeMode = false; // false = by match index, true = by real time
+
+// Approximate S10 phase end timestamps (unix seconds)
+const S10_PHASE_ENDS = [
+  { phase: 1, t: 1769990400, label: 'P1 end' },
+  { phase: 2, t: 1772409600, label: 'P2 end' },
+  { phase: 3, t: 1775088000, label: 'P3 end' },
+];
+
+async function fetchAllMatches(uuid) {
+  const btn = document.getElementById('modal-load-all-matches');
+  if (btn) { btn.textContent = 'loading…'; btn.disabled = true; }
+
+  let allMatches = [...modalMatches]; // start with already-fetched 100
+  let before = allMatches.length ? allMatches[allMatches.length - 1].id : null;
+
+  while (true) {
+    const url = `https://api.mcsrranked.com/users/${uuid}/matches?count=100&type=2&season=10${before ? `&before=${before}` : ''}`;
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      if (j.status !== 'success' || !j.data?.length) break;
+      allMatches = [...allMatches, ...j.data];
+      if (btn) btn.textContent = `loading… ${allMatches.length} matches`;
+      if (j.data.length < 100) break;
+      before = j.data[j.data.length - 1].id;
+      await new Promise(r => setTimeout(r, 100));
+    } catch { break; }
+  }
+
+  modalMatches = allMatches;
+  modalAllMatchesLoaded = true;
+  showAllMatches = true;
+  if (btn) { btn.textContent = `all S10 (${allMatches.length})`; btn.disabled = false; btn.style.color = 'var(--accent)'; }
+  renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
+}
+
+document.getElementById('modal-load-all-matches').addEventListener('click', () => {
+  const uuid = modalUser?.uuid;
+  if (!uuid) return;
+  if (!modalAllMatchesLoaded) {
+    fetchAllMatches(uuid);
+  } else {
+    showAllMatches = !showAllMatches;
+    const btn = document.getElementById('modal-load-all-matches');
+    btn.textContent = showAllMatches ? `all S10 (${modalMatches.length})` : 'last 100';
+    btn.style.color = showAllMatches ? 'var(--accent)' : 'var(--muted)';
+    renderChart(uuid, activeChartTab, mergedData.find(u => u.uuid === uuid) ?? null);
+  }
+});
+
+document.getElementById('modal-elo-time-toggle').addEventListener('click', () => {
+  const uuid = modalUser?.uuid;
+  if (!uuid || activeChartTab !== 'elo') return;
+  eloChartTimeMode = !eloChartTimeMode;
+  const btn = document.getElementById('modal-elo-time-toggle');
+  btn.textContent = eloChartTimeMode ? 'by time' : 'by match';
+  btn.style.color = eloChartTimeMode ? 'var(--accent)' : 'var(--muted)';
+  renderChart(uuid, 'elo', mergedData.find(u => u.uuid === uuid) ?? null);
+});
 
 document.querySelectorAll('.chart-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -1632,7 +1928,9 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   document.body.style.overflow = '';
   if (modalChart) { modalChart.destroy(); modalChart = null; }
-  modalMatches = []; modalUser = null;
+  modalMatches = []; modalUser = null; modalAllMatchesLoaded = false; showAllMatches = false;
+  const btn = document.getElementById('modal-load-all-matches');
+  if (btn) { btn.textContent = 'load all S10 matches'; btn.disabled = false; btn.style.color = 'var(--muted)'; }
 }
 
 let historyChart = null;
