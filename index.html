@@ -1506,12 +1506,29 @@ function renderMatchups(row, lastMatch) {
   const myEloRate = row.eloRate ?? 0;
   const lastOpponentUuid = lastMatch?.players?.find(p => p.uuid !== row.uuid)?.uuid ?? null;
 
+  // Elo differential table: [minDiff, maxDiff, high, low]
+  const ELO_TABLE = [
+    [0,   13,  20, 20], [14,  41,  21, 19], [42,  68,  22, 18],
+    [69,  97,  23, 17], [98,  125, 24, 16], [126, 155, 25, 15],
+    [156, 185, 26, 14], [186, 217, 27, 13], [218, 250, 28, 12],
+    [251, 286, 29, 11], [287, 324, 30, 10], [325, 365, 31,  9],
+    [366, 411, 32,  8], [412, 462, 33,  7], [463, 523, 34,  6],
+    [524, 596, 35,  5], [597, 812, 36,  4], [813, Infinity, 37, 3],
+  ];
+
+  function eloChange(myElo, oppElo) {
+    const diff = Math.abs(myElo - oppElo);
+    const row = ELO_TABLE.find(([min, max]) => diff >= min && diff <= max) ?? ELO_TABLE[ELO_TABLE.length - 1];
+    const [,, high, low] = row;
+    const iAmHigher = myElo >= oppElo;
+    return { win: iAmHigher ? low : high, loss: iAmHigher ? high : low };
+  }
+
   // Queue pool: ±50 elo ranks OR ±250 elo pts, whichever includes more
   const byRank  = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.correctedEloRk ?? u.eloRk) - myEloRk) <= 50);
   const byElo   = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.eloRate ?? 0) - myEloRate) <= 250);
   const pool    = byRank.length >= byElo.length ? byRank : byElo;
 
-  // Exclude last opponent, filter to those with a lastPlayed, sort by most recent
   const candidates = pool
     .filter(u => u.uuid !== lastOpponentUuid && lastPlayedMemory[u.uuid])
     .sort((a, b) => (lastPlayedMemory[b.uuid] ?? 0) - (lastPlayedMemory[a.uuid] ?? 0))
@@ -1523,15 +1540,20 @@ function renderMatchups(row, lastMatch) {
   el.innerHTML = `
     <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±${byRank.length >= byElo.length ? '50 ranks' : '250 elo'})</div>
     <div style="border:1px solid var(--border);padding:4px 10px">
-      ${candidates.map((u, i) => `
+      ${candidates.map((u, i) => {
+        const { win, loss } = eloChange(myEloRate, u.eloRate ?? 0);
+        return `
         <div class="matchup-row">
           <span class="matchup-rank">${i + 1}</span>
           <img src="${avatarUrl(u.uuid)}" style="width:16px;height:16px;image-rendering:pixelated" onerror="this.style.display='none'">
           <span class="matchup-name" onclick="openModal('${u.uuid}')">${esc(u.nickname)}</span>
           <span class="matchup-elo" style="color:${eloColor(u.eloRate ?? 0)}">${u.eloRate ?? '—'}</span>
           <span style="color:var(--muted);font-size:10px;min-width:42px;text-align:right">rank ${u.correctedEloRk ?? u.eloRk}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4ade80;min-width:32px;text-align:right">+${win}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#f87171;min-width:32px;text-align:right">−${loss}</span>
           <span class="matchup-ago">${fmtAgo(lastPlayedMemory[u.uuid])}</span>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>`;
 }
 
