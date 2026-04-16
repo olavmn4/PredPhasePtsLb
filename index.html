@@ -230,13 +230,17 @@
   #modal-last-match { background: var(--bg3); border: 1px solid var(--border); padding: 10px 14px; margin-bottom: 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); display: none; }
   #modal-last-match.visible { display: block; }
   #modal-last-match .match-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .matchup-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .matchup-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
   .matchup-row:last-child { border-bottom: none; }
-  .matchup-rank { color: var(--muted); min-width: 18px; text-align: right; }
-  .matchup-name { color: var(--text); flex: 1; cursor: pointer; }
+  .matchup-rank { color: var(--muted); width: 18px; text-align: right; flex-shrink: 0; }
+  .matchup-avatar { width: 16px; height: 16px; image-rendering: pixelated; flex-shrink: 0; }
+  .matchup-name { color: var(--text); width: 120px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
   .matchup-name:hover { color: var(--accent); }
-  .matchup-elo { min-width: 60px; text-align: right; }
-  .matchup-ago { color: var(--muted); margin-left: auto; }
+  .matchup-elo { width: 48px; text-align: right; flex-shrink: 0; font-weight: 500; }
+  .matchup-elorank { color: var(--muted); font-size: 10px; width: 52px; text-align: right; flex-shrink: 0; }
+  .matchup-win { color: #4ade80; width: 32px; text-align: right; flex-shrink: 0; }
+  .matchup-loss { color: #f87171; width: 32px; text-align: right; flex-shrink: 0; }
+  .matchup-ago { color: var(--muted); width: 60px; text-align: right; flex-shrink: 0; margin-left: auto; }
   .match-result-w { color: var(--accent); font-weight: 600; }
   .match-result-l { color: var(--red); font-weight: 600; }
   .match-elo-pos { color: var(--accent); }
@@ -1540,17 +1544,27 @@ function renderMatchups(row, lastMatch) {
   el.innerHTML = `
     <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±${byRank.length >= byElo.length ? '50 ranks' : '250 elo'})</div>
     <div style="border:1px solid var(--border);padding:4px 10px">
+      <div class="matchup-row" style="border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px">
+        <span class="matchup-rank" style="color:var(--muted);font-size:9px;letter-spacing:.05em">#</span>
+        <span style="width:16px;flex-shrink:0"></span>
+        <span class="matchup-name" style="color:var(--muted);font-size:9px;letter-spacing:.05em;cursor:default">player</span>
+        <span class="matchup-elo" style="color:var(--muted);font-size:9px;letter-spacing:.05em">elo</span>
+        <span class="matchup-elorank" style="color:var(--muted);font-size:9px;letter-spacing:.05em">rank</span>
+        <span class="matchup-win" style="color:var(--muted);font-size:9px;letter-spacing:.05em">win</span>
+        <span class="matchup-loss" style="color:var(--muted);font-size:9px;letter-spacing:.05em">loss</span>
+        <span class="matchup-ago" style="color:var(--muted);font-size:9px;letter-spacing:.05em">last played</span>
+      </div>
       ${candidates.map((u, i) => {
         const { win, loss } = eloChange(myEloRate, u.eloRate ?? 0);
         return `
         <div class="matchup-row">
           <span class="matchup-rank">${i + 1}</span>
-          <img src="${avatarUrl(u.uuid)}" style="width:16px;height:16px;image-rendering:pixelated" onerror="this.style.display='none'">
+          <img class="matchup-avatar" src="${avatarUrl(u.uuid)}" onerror="this.style.display='none'">
           <span class="matchup-name" onclick="openModal('${u.uuid}')">${esc(u.nickname)}</span>
           <span class="matchup-elo" style="color:${eloColor(u.eloRate ?? 0)}">${u.eloRate ?? '—'}</span>
-          <span style="color:var(--muted);font-size:10px;min-width:42px;text-align:right">rank ${u.correctedEloRk ?? u.eloRk}</span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4ade80;min-width:32px;text-align:right">+${win}</span>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#f87171;min-width:32px;text-align:right">−${loss}</span>
+          <span class="matchup-elorank">rank ${u.correctedEloRk ?? u.eloRk}</span>
+          <span class="matchup-win">+${win}</span>
+          <span class="matchup-loss">−${loss}</span>
           <span class="matchup-ago">${fmtAgo(lastPlayedMemory[u.uuid])}</span>
         </div>`;
       }).join('')}
