@@ -230,6 +230,13 @@
   #modal-last-match { background: var(--bg3); border: 1px solid var(--border); padding: 10px 14px; margin-bottom: 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); display: none; }
   #modal-last-match.visible { display: block; }
   #modal-last-match .match-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .matchup-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .matchup-row:last-child { border-bottom: none; }
+  .matchup-rank { color: var(--muted); min-width: 18px; text-align: right; }
+  .matchup-name { color: var(--text); flex: 1; cursor: pointer; }
+  .matchup-name:hover { color: var(--accent); }
+  .matchup-elo { min-width: 60px; text-align: right; }
+  .matchup-ago { color: var(--muted); margin-left: auto; }
   .match-result-w { color: var(--accent); font-weight: 600; }
   .match-result-l { color: var(--red); font-weight: 600; }
   .match-elo-pos { color: var(--accent); }
@@ -467,6 +474,7 @@
     <div id="modal-stats-grid"></div>
     <div id="modal-qual-path"></div>
     <div id="modal-last-match"></div>
+    <div id="modal-matchups" style="display:none;margin-bottom:16px"></div>
     <div id="modal-chart-tabs">
       <button class="chart-tab active" data-chart="elo">Elo history</button>
       <button class="chart-tab" data-chart="gap">Qual gap</button>
@@ -1319,6 +1327,7 @@ async function openModal(uuid) {
     if (matchJson.status === 'success') {
       modalMatches = matchJson.data || [];
       renderLastMatch(uuid, modalMatches[0]);
+      renderMatchups(row, modalMatches[0]);
     }
     renderChart(uuid, activeChartTab, row);
   } catch(e) {
@@ -1487,6 +1496,43 @@ function renderLastMatch(uuid, match) {
       <span style="color:var(--muted);margin-left:auto">${fmtAgo(match.date)}</span>
     </div>`;
   el.classList.add('visible');
+}
+
+function renderMatchups(row, lastMatch) {
+  const el = document.getElementById('modal-matchups');
+  if (!row || !mergedData.length) { el.style.display = 'none'; return; }
+
+  const myEloRk   = row.correctedEloRk ?? row.eloRk;
+  const myEloRate = row.eloRate ?? 0;
+  const lastOpponentUuid = lastMatch?.players?.find(p => p.uuid !== row.uuid)?.uuid ?? null;
+
+  // Queue pool: ±50 elo ranks OR ±250 elo pts, whichever includes more
+  const byRank  = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.correctedEloRk ?? u.eloRk) - myEloRk) <= 50);
+  const byElo   = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.eloRate ?? 0) - myEloRate) <= 250);
+  const pool    = byRank.length >= byElo.length ? byRank : byElo;
+
+  // Exclude last opponent, filter to those with a lastPlayed, sort by most recent
+  const candidates = pool
+    .filter(u => u.uuid !== lastOpponentUuid && lastPlayedMemory[u.uuid])
+    .sort((a, b) => (lastPlayedMemory[b.uuid] ?? 0) - (lastPlayedMemory[a.uuid] ?? 0))
+    .slice(0, 10);
+
+  if (!candidates.length) { el.style.display = 'none'; return; }
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±${byRank.length >= byElo.length ? '50 ranks' : '250 elo'})</div>
+    <div style="border:1px solid var(--border);padding:4px 10px">
+      ${candidates.map((u, i) => `
+        <div class="matchup-row">
+          <span class="matchup-rank">${i + 1}</span>
+          <img src="${avatarUrl(u.uuid)}" style="width:16px;height:16px;image-rendering:pixelated" onerror="this.style.display='none'">
+          <span class="matchup-name" onclick="openModal('${u.uuid}')">${esc(u.nickname)}</span>
+          <span class="matchup-elo" style="color:${eloColor(u.eloRate ?? 0)}">${u.eloRate ?? '—'}</span>
+          <span style="color:var(--muted);font-size:10px;min-width:28px;text-align:right">rk ${u.correctedEloRk ?? u.eloRk}</span>
+          <span class="matchup-ago">${fmtAgo(lastPlayedMemory[u.uuid])}</span>
+        </div>`).join('')}
+    </div>`;
 }
 
 const chartBaseOpts = () => ({
@@ -1943,6 +1989,7 @@ function closeModal() {
   modalMatches = []; modalUser = null; modalAllMatchesLoaded = false; showAllMatches = false;
   const btn = document.getElementById('modal-load-all-matches');
   if (btn) { btn.textContent = 'load all S10 matches'; btn.disabled = false; btn.style.color = 'var(--muted)'; }
+  document.getElementById('modal-matchups').style.display = 'none';
 }
 
 let historyChart = null;
