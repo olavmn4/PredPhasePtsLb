@@ -14,7 +14,16 @@ const MAX_LP_FETCHES = 60; // increased to handle more new players
 const MAX_SNAPSHOTS = 2000;
 const HISTORY_FILE = 'history.json';
 
-async function fetchLastPlayed(uuid) {
+const TWITCH_FILE = 'twitch.json';
+
+async function fetchTwitch(uuid) {
+  try {
+    const r = await fetch(`https://api.mcsrranked.com/users/${uuid}`);
+    const j = await r.json();
+    if (j.status === 'success') return j.data?.connections?.twitch?.name ?? null;
+  } catch {}
+  return null;
+}
   try {
     const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
     const j = await r.json();
@@ -169,10 +178,26 @@ async function main() {
   }
   writeFileSync('lastplayed.json', JSON.stringify(lastPlayedOut));
 
+  // Load existing twitch cache
+  let twitchMap = {};
+  if (existsSync(TWITCH_FILE)) {
+    try { twitchMap = JSON.parse(readFileSync(TWITCH_FILE, 'utf8')); } catch {}
+  }
+
+  // Fetch twitch for players not yet in cache (max 20 per run to stay gentle on API)
+  const twitchNeeded = allUuids.filter(uuid => !(uuid in twitchMap));
+  const twitchToFetch = twitchNeeded.slice(0, 20);
+  console.log(`Fetching twitch for ${twitchToFetch.length}/${twitchNeeded.length} new players, ${Object.keys(twitchMap).length} cached`);
+  for (const uuid of twitchToFetch) {
+    twitchMap[uuid] = await fetchTwitch(uuid);
+    await sleep(150);
+  }
+  writeFileSync(TWITCH_FILE, JSON.stringify(twitchMap));
+
   // Commit and push
   execSync('git config user.name "github-actions[bot]"');
   execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
-  execSync(`git add ${HISTORY_FILE} lastplayed.json`);
+  execSync(`git add ${HISTORY_FILE} lastplayed.json ${TWITCH_FILE}`);
   try {
     execSync('git diff --staged --quiet');
     console.log('No changes to commit');
