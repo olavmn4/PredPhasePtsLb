@@ -471,6 +471,7 @@
         <div id="modal-name-row">
           <span id="modal-flag"></span>
           <span id="modal-nickname"></span>
+          <span id="modal-twitch"></span>
         </div>
         <div id="modal-sub"></div>
       </div>
@@ -591,8 +592,23 @@ async function loadLastPlayed() {
   } catch(e) { console.warn('lastplayed fetch failed', e); }
 }
 
+let twitchMap = {}; // uuid → twitch username or null
+
+async function loadTwitch() {
+  try {
+    const r = await fetch(`/PredPhasePtsLb/twitch.json?t=${Date.now()}`);
+    twitchMap = await r.json();
+    buildMerged(); renderTable();
+  } catch(e) { console.warn('twitch fetch failed', e); }
+}
+
 const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const flag = c => c ? `<img src="https://flagcdn.com/16x12/${c.toLowerCase()}.png" alt="${c}" style="width:16px;height:12px;vertical-align:middle;margin-right:2px" onerror="this.style.display='none'">` : '';
+const twitchLink = uuid => {
+  const name = twitchMap[uuid];
+  if (!name) return '';
+  return `<a href="https://twitch.tv/${name}" target="_blank" rel="noopener" title="twitch: ${name}" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;margin-left:4px;opacity:.55;transition:opacity .15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55"><svg width="11" height="11" viewBox="0 0 24 24" fill="#a78bfa" xmlns="http://www.w3.org/2000/svg"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg></a>`;
+};
 const roleBadge = () => '';
 const avatarUrl = uuid => `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
 const rankCls   = n => n===1?'rank-1':n===2?'rank-2':n===3?'rank-3':'';
@@ -824,6 +840,7 @@ async function fetchAll(spin=true) {
       new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     renderTable();
     loadLastPlayed();
+    loadTwitch();
   } catch(e) {
     console.error(e);
     document.getElementById('last-updated').textContent = 'error';
@@ -1029,6 +1046,7 @@ function renderTable() {
           <img class="avatar" src="${avatarUrl(u.uuid)}" alt="" loading="lazy" onerror="this.style.display='none'">
           ${f ? `<span class="flag">${f}</span>` : ''}
           <span class="nickname">${esc(u.nickname)}</span>
+          ${twitchLink(u.uuid)}
           ${roleBadge(u.roleType)}
         </div>
       </td>
@@ -1307,6 +1325,7 @@ async function openModal(uuid) {
   const row = mergedData.find(u => u.uuid === uuid);
   document.getElementById('modal-avatar').src = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/48`;
   document.getElementById('modal-nickname').textContent = row?.nickname ?? '…';
+  document.getElementById('modal-twitch').innerHTML = twitchLink(uuid);
   document.getElementById('modal-flag').innerHTML = row?.country ? flag(row.country) : '';
   document.getElementById('modal-sub').innerHTML = `
     <span style="color:${eloColor(row?.eloRate??0)}">${row?.eloRate ?? '—'} elo</span>
@@ -1325,6 +1344,9 @@ async function openModal(uuid) {
 
     if (statsJson.status === 'success') {
       modalUser = statsJson.data;
+      // Update twitch from live data and cache it
+      const liveTwitch = statsJson.data?.connections?.twitch?.name ?? null;
+      if (liveTwitch) { twitchMap[uuid] = liveTwitch; document.getElementById('modal-twitch').innerHTML = twitchLink(uuid); }
       renderModalStats(modalUser, row);
       renderQualPath(row);
     }
@@ -1560,7 +1582,7 @@ function renderMatchups(row, lastMatch) {
         <div class="matchup-row">
           <span class="matchup-rank">${i + 1}</span>
           <img class="matchup-avatar" src="${avatarUrl(u.uuid)}" onerror="this.style.display='none'">
-          <span class="matchup-name" onclick="openModal('${u.uuid}')">${esc(u.nickname)}</span>
+          <span class="matchup-name" onclick="openModal('${u.uuid}')">${esc(u.nickname)}${twitchLink(u.uuid)}</span>
           <span class="matchup-elo" style="color:${eloColor(u.eloRate ?? 0)}">${u.eloRate ?? '—'}</span>
           <span class="matchup-elorank">rank ${u.correctedEloRk ?? u.eloRk}</span>
           <span class="matchup-win">+${win}</span>
