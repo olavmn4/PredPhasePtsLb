@@ -24,6 +24,8 @@ async function fetchTwitch(uuid) {
   } catch {}
   return null;
 }
+
+async function fetchLastPlayed(uuid) {
   try {
     const r = await fetch(`https://api.mcsrranked.com/users/${uuid}/matches?count=1&type=2&excludedecay=true`);
     const j = await r.json();
