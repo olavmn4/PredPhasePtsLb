@@ -244,6 +244,8 @@
   .matchup-live { flex: 1; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
   .match-result-w { color: var(--accent); font-weight: 600; }
   .match-result-l { color: var(--red); font-weight: 600; }
+  .match-result-d { color: #7dd3fc; font-weight: 600; }
+  .match-result-decay { color: var(--muted); font-weight: 600; }
   .match-elo-pos { color: var(--accent); }
   .match-elo-neg { color: var(--red); }
   #modal-chart-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
@@ -1510,17 +1512,31 @@ function renderLastMatch(uuid, match) {
   if (!match) return;
   const change = match.changes?.find(c => c.uuid === uuid);
   const opponent = match.players?.find(p => p.uuid !== uuid);
-  const won = match.result?.uuid === uuid;
   const delta = change?.change ?? 0;
   const deltaStr = delta >= 0 ? `+${delta}` : `${delta}`;
   const deltaClass = delta >= 0 ? 'match-elo-pos' : 'match-elo-neg';
-  const resultClass = won ? 'match-result-w' : 'match-result-l';
+
+  const isDecay = match.decayed === true;
+  const isDraw  = !isDecay && match.result?.uuid === null && match.forfeited === true;
+  const won     = !isDecay && !isDraw && match.result?.uuid === uuid;
+
+  let resultLabel, resultClass, timeStr;
+  if (isDecay) {
+    resultLabel = 'DECAY'; resultClass = 'match-result-decay'; timeStr = '';
+  } else if (isDraw) {
+    resultLabel = 'DRAW'; resultClass = 'match-result-d'; timeStr = fmtTime(match.result?.time);
+  } else {
+    resultLabel = won ? 'WIN' : 'LOSS';
+    resultClass = won ? 'match-result-w' : 'match-result-l';
+    timeStr = match.forfeited ? '(forfeit)' : fmtTime(match.result?.time);
+  }
+
   el.innerHTML = `<div class="stat-label" style="margin-bottom:6px">last match</div>
     <div class="match-row">
-      <span class="${resultClass}">${won ? 'WIN' : 'LOSS'}</span>
-      <span>vs ${esc(opponent?.nickname ?? '?')}</span>
+      <span class="${resultClass}">${resultLabel}</span>
+      ${opponent ? `<span>vs ${esc(opponent.nickname)}</span>` : ''}
       <span class="${deltaClass}">${deltaStr} elo</span>
-      <span style="color:var(--muted)">${match.forfeited ? '(forfeit)' : fmtTime(match.result?.time)}</span>
+      ${timeStr ? `<span style="color:var(--muted)">${timeStr}</span>` : ''}
       <span style="color:var(--muted);margin-left:auto">${fmtAgo(match.date)}</span>
     </div>`;
   el.classList.add('visible');
@@ -1644,7 +1660,7 @@ function renderMatchups(row, lastMatch) {
           const elapsed = live ? Math.floor((Date.now() - live.fetchedAt) / 1000) * 1000 : 0;
           const t = fmtTime(liveInfo.currentTime + elapsed);
           const checkpoint = fmtTimeline(liveInfo.timeline?.type);
-          liveCell = `<span class="matchup-live" style="text-align:right"><span style="color:#f87171;font-size:10px">● LIVE</span> <span class="live-timer" data-base="${liveInfo.currentTime}" data-fetched="${live?.fetchedAt ?? Date.now()}" style="color:var(--text)">${t}</span>${checkpoint ? ` <span style="color:var(--muted);font-size:10px">${checkpoint}</span>` : ''}</span>`;
+          liveCell = `<span class="matchup-live" style="text-align:right"><span style="color:#f87171;font-size:10px">● LIVE</span> <span class="live-timer" data-base="${liveInfo.currentTime}" data-fetched="${live?.fetchedAt ?? Date.now()}" style="color:var(--text)">${t}</span> <span style="color:var(--muted);font-size:10px">${checkpoint || 'match started'}</span></span>`;
         } else {
           liveCell = `<span class="matchup-live" style="text-align:right;color:var(--muted)">${fmtAgo(lastPlayedMemory[u.uuid])}</span>`;
         }
