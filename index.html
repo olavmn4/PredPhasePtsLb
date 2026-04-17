@@ -1620,6 +1620,14 @@ function renderMatchups(row, lastMatch) {
 
   if (!allCandidates.length) { el.style.display = 'none'; return; }
 
+  // Warning: show if player is below elo rank 100, or within 250 elo of the 150th ranked player
+  const eloSorted = [...mergedData].filter(u => u.eloRate > 0).sort((a, b) => (b.eloRate ?? 0) - (a.eloRate ?? 0));
+  const player150Elo = eloSorted[149]?.eloRate ?? 0;
+  const couldQueueOutside = myEloRk > 100 || myEloRate - 250 <= player150Elo;
+  const warningHtml = couldQueueOutside
+    ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#fbbf24;margin-top:6px;opacity:.7">⚠ some queueable players may not appear — leaderboard covers ~top 150 by elo rank</div>`
+    : '';
+
   function buildHtml(live) {
     const liveSet = live?.matches ?? new Map();
 
@@ -1643,7 +1651,7 @@ function renderMatchups(row, lastMatch) {
       ...inactivePlayers.slice(0, Math.max(0, 10 - livePlayers.length)),
     ];
     return `
-    <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±50 ranks or ±250 elo)</div>
+    <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±50 ranks or ±250 elo)${warningHtml}</div>
     <div style="border:1px solid var(--border);padding:4px 10px">
       <div class="matchup-row" style="border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px">
         <span class="matchup-rank" style="color:var(--muted);font-size:9px;letter-spacing:.05em">#</span>
