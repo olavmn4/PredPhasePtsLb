@@ -1410,6 +1410,7 @@ function renderQualPath(row) {
   const currentElo = row.eloRate ?? 0;
 
   if (P3_ENDED) {
+    // P4 mode: show what total pts they'd reach at each P4 elo rank
     const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
     const bestCase = currentPP + p4Pts(1);
 
@@ -1419,6 +1420,7 @@ function renderQualPath(row) {
       const qualifies = total >= PLAYOFFS_TARGET;
       const rankElo = eloByRank[r4] ?? 0;
       const eloGap = r4 === currentRk ? 0 : rankElo > currentElo ? rankElo - currentElo : -(currentElo - rankElo);
+      // skip rows that can't qualify and aren't current rank (keep a few below for context)
       if (!qualifies && r4 > currentRk + 5 && total < PLAYOFFS_TARGET - 20) continue;
       rows.push({ r4, total, qualifies, eloGap, isCurrent: r4 === currentRk });
     }
@@ -1447,6 +1449,7 @@ function renderQualPath(row) {
         </table>
       </div>`;
   } else {
+    // P3 mode (legacy): show P3 rank → pts after P3 → worst P4 rank needed
     const p3Pts = currentPhasePoints;
     const p4Pts = r => (r >= 1 && r <= 100) ? PP_TABLE[r-1][4] : 0;
 
@@ -1525,9 +1528,11 @@ function renderLastMatch(uuid, match) {
 
 let liveDataCache = null;
 let liveRefreshInterval = null;
+let liveTickInterval = null;
 
 function stopLiveRefresh() {
   if (liveRefreshInterval) { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
+  if (liveTickInterval)    { clearInterval(liveTickInterval);    liveTickInterval = null; }
 }
 
 async function fetchLiveData() {
@@ -1599,10 +1604,11 @@ function renderMatchups(row, lastMatch) {
   function buildHtml(live) {
     const liveSet = live?.matches ?? new Map();
 
+    // Split into live (in a run right now) and inactive
     const livePlayers = allCandidates
       .filter(u => liveSet.has(u.uuid))
       .sort((a, b) => {
-
+        // Sort by furthest progress in run (highest timeline.time = furthest)
         const ta = liveSet.get(a.uuid)?.timeline?.time ?? 0;
         const tb = liveSet.get(b.uuid)?.timeline?.time ?? 0;
         return tb - ta;
@@ -1612,6 +1618,7 @@ function renderMatchups(row, lastMatch) {
       .filter(u => !liveSet.has(u.uuid))
       .sort((a, b) => (lastPlayedMemory[b.uuid] ?? 0) - (lastPlayedMemory[a.uuid] ?? 0));
 
+    // Live players first, then fill up to 10 with most recent inactive
     const candidates = [
       ...livePlayers,
       ...inactivePlayers.slice(0, Math.max(0, 10 - livePlayers.length)),
@@ -1634,9 +1641,10 @@ function renderMatchups(row, lastMatch) {
         const liveInfo = live?.matches.get(u.uuid);
         let liveCell;
         if (liveInfo) {
-          const t = fmtTime(liveInfo.currentTime);
+          const elapsed = live ? Math.floor((Date.now() - live.fetchedAt) / 1000) * 1000 : 0;
+          const t = fmtTime(liveInfo.currentTime + elapsed);
           const checkpoint = fmtTimeline(liveInfo.timeline?.type);
-          liveCell = `<span class="matchup-live" style="text-align:right"><span style="color:#f87171;font-size:10px">● LIVE</span> <span style="color:var(--text)">${t}</span>${checkpoint ? ` <span style="color:var(--muted);font-size:10px">${checkpoint}</span>` : ''}</span>`;
+          liveCell = `<span class="matchup-live" style="text-align:right"><span style="color:#f87171;font-size:10px">● LIVE</span> <span class="live-timer" data-base="${liveInfo.currentTime}" data-fetched="${live?.fetchedAt ?? Date.now()}" style="color:var(--text)">${t}</span>${checkpoint ? ` <span style="color:var(--muted);font-size:10px">${checkpoint}</span>` : ''}</span>`;
         } else {
           liveCell = `<span class="matchup-live" style="text-align:right;color:var(--muted)">${fmtAgo(lastPlayedMemory[u.uuid])}</span>`;
         }
@@ -1665,10 +1673,21 @@ function renderMatchups(row, lastMatch) {
     }
   }
 
+  // Show immediately with cached data, then start polling every 5s
   el.innerHTML = buildHtml(liveDataCache);
   stopLiveRefresh();
-  refreshLive(); 
+  refreshLive(); // immediate first fetch
   liveRefreshInterval = setInterval(refreshLive, 5000);
+
+  // Tick every second to update live timers without API call
+  liveTickInterval = setInterval(() => {
+    document.querySelectorAll('.live-timer').forEach(span => {
+      const base    = parseInt(span.dataset.base, 10);
+      const fetched = parseInt(span.dataset.fetched, 10);
+      const elapsed = Date.now() - fetched;
+      span.textContent = fmtTime(base + elapsed);
+    });
+  }, 1000);
 }
 
 const chartBaseOpts = () => ({
@@ -1724,7 +1743,7 @@ function renderChart(uuid, type, row) {
 
     const filteredData   = filtered.map(f => f.eloVal);
     const filteredLabels = filtered.map(f => fmtAgo(f.m.date));
-    const filteredDates  = filtered.map(f => f.m.date); 
+    const filteredDates  = filtered.map(f => f.m.date); // unix seconds
 
     const TIERS = [
       { min: 2000, label: 'Netherite', color: '#a78bfa' },
@@ -1745,7 +1764,7 @@ function renderChart(uuid, type, row) {
     const maxVal = Math.max(...validData);
     const visibleTiers = TIERS.filter(t => t.min >= minVal - 200 && t.min <= maxVal + 200);
 
-    const phaseColors = ['#60a5fa', '#f59e0b', '#a78bfa']; 
+    const phaseColors = ['#60a5fa', '#f59e0b', '#a78bfa']; // P1, P2, P3
     const phaseApiData = modalUser?.seasonResult?.phases ?? [];
 
     const phaseLines = S10_PHASE_ENDS.map((ph, i) => {
@@ -1772,6 +1791,7 @@ function renderChart(uuid, type, row) {
           const x = xScale.getPixelForValue(xValue);
           if (x < chart.chartArea.left || x > chart.chartArea.right) return;
 
+          // Draw dashed line
           ctx2.save();
           ctx2.strokeStyle = color;
           ctx2.lineWidth = 1;
@@ -1784,6 +1804,7 @@ function renderChart(uuid, type, row) {
           ctx2.setLineDash([]);
           ctx2.globalAlpha = 1;
 
+          // Label box — alternate top/bottom
           const label = ph.label;
           const subLabel = eloAtEnd ? `${eloAtEnd} elo` : '';
           const rankLabel = rankAtEnd ? `rank ${rankAtEnd}` : '';
@@ -1798,6 +1819,7 @@ function renderChart(uuid, type, row) {
           if (bx + bw > chart.chartArea.right) bx = x - bw - 5;
           const by = fromTop ? top + 6 : bottom - bh - 6;
 
+          // Box background + border
           ctx2.fillStyle = 'rgba(13,14,15,0.85)';
           ctx2.strokeStyle = color;
           ctx2.lineWidth = 1;
@@ -1806,6 +1828,7 @@ function renderChart(uuid, type, row) {
           ctx2.fill();
           ctx2.stroke();
 
+          // Label text
           ctx2.textBaseline = 'top';
           lines.forEach((line, li) => {
             ctx2.font = li === 0 ? "bold 9px 'IBM Plex Mono', monospace" : "9px 'IBM Plex Mono', monospace";
@@ -1976,9 +1999,12 @@ function renderChart(uuid, type, row) {
     const p3    = p3api !== null ? p3api : (row?.gain ?? 0);
     const p3ended = p3api !== null;
 
+    // MSS: pts not attributable to any phase (tournament bonus pts)
+    // = total locked pts minus all phase pts
     const lockedTotal = modalUser?.seasonResult?.last?.phasePoint ?? (p1 + p2 + p3);
     const mss = Math.max(0, lockedTotal - p1 - p2 - p3);
 
+    // P4: predPP - everything already locked
     const p4pred = Math.max(0, (row?.predPP ?? 0) - lockedTotal);
 
     const p1rank = phases.find(p=>p.phase===1)?.eloRank;
@@ -2028,8 +2054,9 @@ function renderChart(uuid, type, row) {
 
 let modalAllMatchesLoaded = false;
 let showAllMatches = false;
-let eloChartTimeMode = false; 
+let eloChartTimeMode = false; // false = by match index, true = by real time
 
+// Approximate S10 phase end timestamps (unix seconds)
 const S10_PHASE_ENDS = [
   { phase: 1, t: 1769990400, label: 'P1 end' },
   { phase: 2, t: 1772409600, label: 'P2 end' },
@@ -2040,7 +2067,7 @@ async function fetchAllMatches(uuid) {
   const btn = document.getElementById('modal-load-all-matches');
   if (btn) { btn.textContent = 'loading…'; btn.disabled = true; }
 
-  let allMatches = [...modalMatches]; 
+  let allMatches = [...modalMatches]; // start with already-fetched 100
   let before = allMatches.length ? allMatches[allMatches.length - 1].id : null;
 
   while (true) {
@@ -2123,7 +2150,7 @@ function closeModal() {
 
 let historyChart = null;
 let historyMode  = 'top12';
-const helmImageCache = {}; 
+const helmImageCache = {}; // uuid → Image object
 
 const HISTORY_PALETTE = [
   '#4ade80','#60a5fa','#f59e0b','#f87171','#a78bfa','#34d399','#fb923c',
@@ -2135,7 +2162,7 @@ const playerColor = (() => {
   return uuid => { if (!map[uuid]) map[uuid] = HISTORY_PALETTE[i++ % HISTORY_PALETTE.length]; return map[uuid]; };
 })();
 
-let helmHueCache = {}; 
+let helmHueCache = {}; // uuid → hue 0-360, -1 if failed
 
 async function fetchHelmHue(uuid) {
   if (helmHueCache[uuid] !== undefined) return;
@@ -2155,6 +2182,7 @@ async function fetchHelmHue(uuid) {
         }
         if (!n) { helmHueCache[uuid] = -1; resolve(); return; }
         r /= n; g /= n; b /= n;
+        // RGB to hue
         const max = Math.max(r,g,b), min = Math.min(r,g,b), d2 = max - min;
         let h = 0;
         if (d2) {
@@ -2231,11 +2259,13 @@ function renderHistoryChart() {
   if (historyChart) { historyChart.destroy(); historyChart = null; }
   frozenDatasetIndex = null;
 
+  // Limit to last 7 days
   const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
   const isTop12 = historyMode === 'top12';
 
   const datasets = included.map(([uuid, hist]) => {
     const u = mergedData.find(x => x.uuid === uuid);
+    // Only include points within last 7 days, using { x: ms, y: rank } format
     const recentHist = hist.filter(p => p.t >= sevenDaysAgo);
     if (!recentHist.length) return null;
     const data = recentHist.map(p => ({ x: p.t * 1000, y: p.ppRk }));
@@ -2332,6 +2362,7 @@ function renderHistoryChart() {
     },
   });
 
+  // Hover: find nearest dataset to mouse position by y-distance
   canvas.addEventListener('mousemove', e => {
     if (frozenDatasetIndex !== null) return;
     const rect = canvas.getBoundingClientRect();
@@ -2341,7 +2372,7 @@ function renderHistoryChart() {
     if (!chart) return;
 
     let closest = null;
-    let closestDist = 30; 
+    let closestDist = 30; // max px distance to trigger highlight
 
     chart.data.datasets.forEach((ds, i) => {
       const meta = chart.getDatasetMeta(i);
@@ -2390,6 +2421,7 @@ function renderHistoryChart() {
     }
   });
 
+  // Legend interactions
   legend.querySelectorAll('.hist-legend-item').forEach(el => {
     const idx = parseInt(el.dataset.idx);
     el.addEventListener('mouseenter', () => { if (frozenDatasetIndex !== null) return; applyHighlight(idx); });
@@ -2414,6 +2446,8 @@ document.getElementById('hist-top100-btn').addEventListener('click', () => {
   renderHistoryChart();
 });
 
+
+// Sync top scrollbar with table
 (function() {
   const topBar = document.getElementById('top-scroll-bar');
   const topInner = document.getElementById('top-scroll-inner');
@@ -2430,6 +2464,7 @@ document.getElementById('hist-top100-btn').addEventListener('click', () => {
   topBar.addEventListener('scroll', () => { tableDiv.scrollLeft = topBar.scrollLeft; });
   tableDiv.addEventListener('scroll', () => { topBar.scrollLeft = tableDiv.scrollLeft; });
 
+  // Re-sync whenever table content changes
   const obs = new MutationObserver(syncTopBar);
   obs.observe(document.getElementById('main-tbody'), { childList: true });
   window.addEventListener('resize', syncTopBar);
