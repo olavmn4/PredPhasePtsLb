@@ -241,6 +241,7 @@
   .matchup-win { color: #4ade80; width: 36px; text-align: right; flex-shrink: 0; }
   .matchup-loss { color: #f87171; width: 36px; text-align: right; flex-shrink: 0; }
   .matchup-ago { color: var(--muted); width: 64px; text-align: right; flex-shrink: 0; }
+  .matchup-live { flex: 1; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
   .match-result-w { color: var(--accent); font-weight: 600; }
   .match-result-l { color: var(--red); font-weight: 600; }
   .match-elo-pos { color: var(--accent); }
@@ -1302,6 +1303,7 @@ function buildEloGradient(ctx2d, chartArea, dataValues) {
 }
 
 async function openModal(uuid) {
+  stopLiveRefresh();
   const overlay = document.getElementById('modal-overlay');
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
@@ -1524,6 +1526,45 @@ function renderLastMatch(uuid, match) {
   el.classList.add('visible');
 }
 
+let liveDataCache = null;
+let liveRefreshInterval = null;
+
+function stopLiveRefresh() {
+  if (liveRefreshInterval) { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
+}
+
+async function fetchLiveData() {
+  try {
+    const r = await fetch('https://api.mcsrranked.com/live');
+    const j = await r.json();
+    if (j.status !== 'success') return null;
+    const matches = new Map();
+    for (const m of (j.data?.liveMatches ?? [])) {
+      for (const [uuid, d] of Object.entries(m.data ?? {})) {
+        matches.set(uuid, { currentTime: m.currentTime, timeline: d.timeline });
+      }
+    }
+    return { fetchedAt: Date.now(), matches };
+  } catch { return null; }
+}
+
+function fmtTimeline(type) {
+  if (!type) return '';
+  const map = {
+    'story.enter_the_nether':              'nether',
+    'projectelo.timeline.blind_travel':    'blind travel',
+    'projectelo.timeline.stronghold':      'stronghold',
+    'story.follow_ender_eye':              'stronghold',
+    'story.enter_the_end':                 'end',
+    'story.kill_the_ender_dragon':         'finished',
+    'projectelo.timeline.first_portal':    'first portal',
+    'projectelo.timeline.second_portal':   'second portal',
+    'projectelo.timeline.enter_bastion':   'bastion',
+    'projectelo.timeline.enter_fortress':  'fortress',
+  };
+  return map[type] ?? type.split('.').pop().replace(/_/g, ' ');
+}
+
 function renderMatchups(row, lastMatch) {
   const el = document.getElementById('modal-matchups');
   if (!row || !mergedData.length) { el.style.display = 'none'; return; }
@@ -1532,7 +1573,6 @@ function renderMatchups(row, lastMatch) {
   const myEloRate = row.eloRate ?? 0;
   const lastOpponentUuid = lastMatch?.players?.find(p => p.uuid !== row.uuid)?.uuid ?? null;
 
-  // Elo differential table: [minDiff, maxDiff, high, low]
   const ELO_TABLE = [
     [0,   13,  20, 20], [14,  41,  21, 19], [42,  68,  22, 18],
     [69,  97,  23, 17], [98,  125, 24, 16], [126, 155, 25, 15],
@@ -1544,16 +1584,15 @@ function renderMatchups(row, lastMatch) {
 
   function eloChange(myElo, oppElo) {
     const diff = Math.abs(myElo - oppElo);
-    const row = ELO_TABLE.find(([min, max]) => diff >= min && diff <= max) ?? ELO_TABLE[ELO_TABLE.length - 1];
-    const [,, high, low] = row;
+    const r = ELO_TABLE.find(([min, max]) => diff >= min && diff <= max) ?? ELO_TABLE[ELO_TABLE.length - 1];
+    const [,, high, low] = r;
     const iAmHigher = myElo >= oppElo;
     return { win: iAmHigher ? low : high, loss: iAmHigher ? high : low };
   }
 
-  // Queue pool: ±50 elo ranks OR ±250 elo pts, whichever includes more
-  const byRank  = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.correctedEloRk ?? u.eloRk) - myEloRk) <= 50);
-  const byElo   = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.eloRate ?? 0) - myEloRate) <= 250);
-  const pool    = byRank.length >= byElo.length ? byRank : byElo;
+  const byRank = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.correctedEloRk ?? u.eloRk) - myEloRk) <= 50);
+  const byElo  = mergedData.filter(u => u.uuid !== row.uuid && Math.abs((u.eloRate ?? 0) - myEloRate) <= 250);
+  const pool   = byRank.length >= byElo.length ? byRank : byElo;
 
   const candidates = pool
     .filter(u => u.uuid !== lastOpponentUuid && lastPlayedMemory[u.uuid])
@@ -1562,8 +1601,10 @@ function renderMatchups(row, lastMatch) {
 
   if (!candidates.length) { el.style.display = 'none'; return; }
 
-  el.style.display = 'block';
-  el.innerHTML = `
+  const candidateUuids = new Set(candidates.map(u => u.uuid));
+
+  function buildHtml(live) {
+    return `
     <div class="qual-path-label" style="margin-bottom:8px">most recently active queueable players (pool: ${pool.length}, ±${byRank.length >= byElo.length ? '50 ranks' : '250 elo'})</div>
     <div style="border:1px solid var(--border);padding:4px 10px">
       <div class="matchup-row" style="border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px">
@@ -1574,10 +1615,19 @@ function renderMatchups(row, lastMatch) {
         <span class="matchup-elorank" style="color:var(--muted);font-size:9px;letter-spacing:.05em">rank</span>
         <span class="matchup-win" style="color:var(--muted);font-size:9px;letter-spacing:.05em">win</span>
         <span class="matchup-loss" style="color:var(--muted);font-size:9px;letter-spacing:.05em">loss</span>
-        <span class="matchup-ago" style="color:var(--muted);font-size:9px;letter-spacing:.05em">last played</span>
+        <span class="matchup-live" style="color:var(--muted);font-size:9px;letter-spacing:.05em;flex:1;text-align:right">live / last played</span>
       </div>
       ${candidates.map((u, i) => {
         const { win, loss } = eloChange(myEloRate, u.eloRate ?? 0);
+        const liveInfo = live?.matches.get(u.uuid);
+        let liveCell;
+        if (liveInfo) {
+          const t = fmtTime(liveInfo.currentTime);
+          const checkpoint = fmtTimeline(liveInfo.timeline?.type);
+          liveCell = `<span class="matchup-live" style="text-align:right"><span style="color:#f87171;font-size:10px">● LIVE</span> <span style="color:var(--text)">${t}</span>${checkpoint ? ` <span style="color:var(--muted);font-size:10px">${checkpoint}</span>` : ''}</span>`;
+        } else {
+          liveCell = `<span class="matchup-live" style="text-align:right;color:var(--muted)">${fmtAgo(lastPlayedMemory[u.uuid])}</span>`;
+        }
         return `
         <div class="matchup-row">
           <span class="matchup-rank">${i + 1}</span>
@@ -1587,10 +1637,27 @@ function renderMatchups(row, lastMatch) {
           <span class="matchup-elorank">rank ${u.correctedEloRk ?? u.eloRk}</span>
           <span class="matchup-win">+${win}</span>
           <span class="matchup-loss">−${loss}</span>
-          <span class="matchup-ago">${fmtAgo(lastPlayedMemory[u.uuid])}</span>
+          ${liveCell}
         </div>`;
       }).join('')}
     </div>`;
+  }
+
+  el.style.display = 'block';
+
+  async function refreshLive() {
+    const live = await fetchLiveData();
+    if (live) {
+      liveDataCache = live;
+      if (el.style.display !== 'none') el.innerHTML = buildHtml(live);
+    }
+  }
+
+  // Show immediately with cached data, then start polling every 5s
+  el.innerHTML = buildHtml(liveDataCache);
+  stopLiveRefresh();
+  refreshLive(); // immediate first fetch
+  liveRefreshInterval = setInterval(refreshLive, 5000);
 }
 
 const chartBaseOpts = () => ({
@@ -2041,6 +2108,7 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 function closeModal() {
+  stopLiveRefresh();
   document.getElementById('modal-overlay').style.display = 'none';
   document.body.style.overflow = '';
   if (modalChart) { modalChart.destroy(); modalChart = null; }
