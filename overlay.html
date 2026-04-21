@@ -44,7 +44,6 @@
   .ov-header {
     display: flex;
     align-items: center;
-    gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
     background: var(--bg2);
@@ -53,27 +52,6 @@
   .ov-avatar {
     width: 24px; height: 24px;
     image-rendering: pixelated;
-    flex-shrink: 0;
-  }
-
-  .ov-name {
-    font-size: 13px;
-    font-weight: 600;
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .ov-tag {
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--accent);
-    background: rgba(74,222,128,.07);
-    border: 1px solid rgba(74,222,128,.18);
-    padding: 1px 6px;
-    letter-spacing: .05em;
-    flex-shrink: 0;
   }
 
   /* ── Stats grid ── */
@@ -135,17 +113,8 @@
 
   /* ── Footer ── */
   .ov-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 5px 12px;
     background: var(--bg2);
-  }
-
-  .ov-footer-label {
-    font-size: 8px;
-    color: var(--muted);
-    letter-spacing: .05em;
   }
 
   .ov-countdown {
@@ -153,16 +122,6 @@
     color: var(--muted);
     letter-spacing: .04em;
   }
-
-  .ov-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: var(--accent);
-    animation: pulse 2s infinite;
-    display: inline-block;
-    margin-right: 4px;
-    vertical-align: middle;
-  }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   .error {
     padding: 12px;
@@ -197,13 +156,13 @@ const eloCol = r => r >= 2000 ? '#a78bfa' : r >= 1500 ? '#7dd3fc' : r >= 1200 ? 
 
 const fmtCountdown = t => {
   const d = t - Math.floor(Date.now() / 1000);
-  if (d <= 0) return 'season ended';
+  if (d <= 0) return 'Season ended';
   const days = Math.floor(d / 86400);
   const hrs  = Math.floor((d % 86400) / 3600);
   const mins = Math.floor((d % 3600) / 60);
-  if (days > 0) return `${days}d ${hrs}h left`;
-  if (hrs > 0)  return `${hrs}h ${mins}m left`;
-  return `${mins}m left`;
+  if (days > 0) return `Season end: ${days}d ${hrs}h ${mins}m`;
+  if (hrs > 0)  return `Season end: ${hrs}h ${mins}m`;
+  return `Season end: ${mins}m`;
 };
 
 async function load() {
@@ -257,15 +216,35 @@ async function load() {
     // Build qual string
     let qualText, qualClass;
     if (ppRk !== '—' && ppRk <= 12) {
-      qualText  = `↑ seed — rank ${ppRk}`;
-      qualClass = '';
+      if (ppRk === 1) {
+        qualText = '↑ seed #1 — top seed';
+        qualClass = '';
+      } else {
+        // How much elo to beat the player above?
+        const boundary = sorted[ppRk - 2]; // player ranked one above
+        const bPP    = boundary?.seasonResult?.phasePoint ?? 0;
+        const bEloRk = rawElo.find(u => u.uuid === boundary?.uuid)?.eloRank ?? (ppRk - 1);
+        let gap = null;
+        for (let r = eloRk; r >= 1; r--) {
+          const myNew = currentPP + p4Pts(r);
+          const bNew  = bPP + p4Pts(bEloRk);
+          if (myNew > bNew || (myNew === bNew && (eloByRank[r] ?? 0) > (eloByRank[bEloRk] ?? 0))) {
+            gap = Math.max(0, (eloByRank[r] ?? 0) - eloRate);
+            break;
+          }
+        }
+        qualText  = gap === null ? `↑ seed #${ppRk} — unreachable` : gap === 0 ? `↑ seed #${ppRk} — qualified` : `↑ seed #${ppRk} — +${gap} elo`;
+        qualClass = gap === null ? 'bad' : gap === 0 ? '' : 'warn';
+      }
     } else if (lcqPP !== null && predPP >= lcqPP) {
       const boundary = sorted[11];
-      const bPP   = boundary?.seasonResult?.phasePoint ?? 0;
+      const bPP    = boundary?.seasonResult?.phasePoint ?? 0;
       const bEloRk = rawElo.find(u => u.uuid === boundary?.uuid)?.eloRank ?? 12;
       let gap = null;
       for (let r = eloRk; r >= 1; r--) {
-        if (currentPP + p4Pts(r) > bPP + p4Pts(bEloRk)) {
+        const myNew = currentPP + p4Pts(r);
+        const bNew  = bPP + p4Pts(bEloRk);
+        if (myNew > bNew || (myNew === bNew && (eloByRank[r] ?? 0) > (eloByRank[bEloRk] ?? 0))) {
           gap = Math.max(0, (eloByRank[r] ?? 0) - eloRate);
           break;
         }
@@ -282,8 +261,6 @@ async function load() {
     content.innerHTML = `
       <div class="ov-header">
         <img class="ov-avatar" src="${avatarSrc}" onerror="this.style.display='none'">
-        <span class="ov-name">${nickname}</span>
-        <span class="ov-tag">S10 · P4</span>
       </div>
       <div class="ov-stats">
         <div class="ov-stat">
@@ -308,7 +285,6 @@ async function load() {
         <span class="ov-qual-value ${qualClass}">${qualText}</span>
       </div>
       <div class="ov-footer">
-        <span class="ov-footer-label"><span class="ov-dot"></span>live · updates every 60s</span>
         <span class="ov-countdown" id="ov-countdown">${fmtCountdown(PHASE_END)}</span>
       </div>
     `;
