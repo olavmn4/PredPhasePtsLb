@@ -42,6 +42,7 @@
 <script>
 const params      = new URLSearchParams(location.search);
 const playerParam = (params.get('player') ?? '').toLowerCase();
+const targetParam = (params.get('target') ?? '').toLowerCase(); // 'playoffs', 'seed#', 'lcq', 'lcqhs'
 const zoom = parseFloat(params.get('zoom') ?? '2');
 document.documentElement.style.zoom = zoom;
 const PHASE_END   = 1777507200;
@@ -190,29 +191,71 @@ async function load() {
       return { gap: null, rank: null };
     }
 
-    // Build qual pill — use predPP for type detection, ppRk only for seed position display
+    // Parse target param
+    const seedMatch = targetParam.match(/^seed(\d+)$/);
+    const forceSeed = seedMatch ? parseInt(seedMatch[1]) : null; // e.g. target=seed3 → 3
+
+    // Build qual pill
     let qualHtml;
-    const playoffsPP = sorted.length >= 12 ? sorted[11].predPhasePoint : null;
     const isTop12 = ppRk && ppRk <= 12;
     const isLCQ   = lcqPP !== null && predPP >= lcqPP;
 
-    if (isTop12 && ppRk === 1) {
-      qualHtml = `<span class="qual-pill qual-seed">↑ seed #1 <span style="opacity:.7">top seed</span></span>`;
-    } else if (isTop12) {
-      const { gap, rank } = simulateQual(ppRk - 1);
-      const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
-      if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} <span style="opacity:.55">currently unreachable</span></span>`;
-      else              qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} +${gap} elo${rankStr}</span>`;
-    } else if (isLCQ) {
+    if (targetParam === 'lcqhs') {
+      // LCQ headstart: show gap to next headstart threshold
+      if (lcqPP === null) {
+        qualHtml = `<span class="qual-pill qual-lcq">LCQ headstart <span style="opacity:.55">no cutoff data</span></span>`;
+      } else {
+        const currentHS = predPP >= lcqPP ? Math.floor((predPP - lcqPP) / 10) : 0;
+        const nextHSPP  = lcqPP + (currentHS + 1) * 10;
+        const ptsNeeded = nextHSPP - predPP;
+        qualHtml = ptsNeeded <= 0
+          ? `<span class="qual-pill qual-lcq">HS ${currentHS} <span style="opacity:.7">next: +${10 - ((predPP - lcqPP) % 10)} pts</span></span>`
+          : `<span class="qual-pill qual-lcq">HS #${currentHS + 1} <span style="opacity:.7">needs +${ptsNeeded} pts</span></span>`;
+      }
+    } else if (forceSeed !== null) {
+      // Specific seed target e.g. target=seed3
+      if (forceSeed < 1 || forceSeed > 12) {
+        qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.55">invalid seed (1–12)</span></span>`;
+      } else if (ppRk && ppRk <= forceSeed) {
+        qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} <span style="opacity:.7">already there</span></span>`;
+      } else {
+        const { gap, rank } = simulateQual(forceSeed);
+        const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+        if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} <span style="opacity:.55">currently unreachable</span></span>`;
+        else              qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} +${gap} elo${rankStr}</span>`;
+      }
+    } else if (targetParam === 'playoffs') {
       const { gap, rank } = simulateQual(12);
       const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
-      if (gap === null) qualHtml = `<span class="qual-pill qual-po">→ Playoffs <span style="opacity:.55">currently unreachable</span></span>`;
-      else              qualHtml = `<span class="qual-pill qual-po">→ Playoffs +${gap} elo${rankStr}</span>`;
-    } else {
+      if (isTop12)          qualHtml = `<span class="qual-pill qual-po">→ Playoffs <span style="opacity:.7">qualified</span></span>`;
+      else if (gap === null) qualHtml = `<span class="qual-pill qual-po">→ Playoffs <span style="opacity:.55">currently unreachable</span></span>`;
+      else                   qualHtml = `<span class="qual-pill qual-po">→ Playoffs +${gap} elo${rankStr}</span>`;
+    } else if (targetParam === 'lcq') {
       const { gap, rank } = simulateQual(100);
       const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
-      if (gap === null) qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.55">currently unreachable</span></span>`;
-      else              qualHtml = `<span class="qual-pill qual-lcq">→ LCQ +${gap} elo${rankStr}</span>`;
+      if (isLCQ || isTop12) qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.7">qualified</span></span>`;
+      else if (gap === null) qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.55">currently unreachable</span></span>`;
+      else                   qualHtml = `<span class="qual-pill qual-lcq">→ LCQ +${gap} elo${rankStr}</span>`;
+    } else {
+      // Default behaviour
+      if (isTop12 && ppRk === 1) {
+        qualHtml = `<span class="qual-pill qual-seed">↑ seed #1 <span style="opacity:.7">top seed</span></span>`;
+      } else if (isTop12) {
+        const { gap, rank } = simulateQual(ppRk - 1);
+        const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+        if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} <span style="opacity:.55">currently unreachable</span></span>`;
+        else              qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} +${gap} elo${rankStr}</span>`;
+      } else if (isLCQ) {
+        const { gap, rank } = simulateQual(12);
+        const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+        if (gap === null) qualHtml = `<span class="qual-pill qual-po">→ Playoffs <span style="opacity:.55">currently unreachable</span></span>`;
+        else              qualHtml = `<span class="qual-pill qual-po">→ Playoffs +${gap} elo${rankStr}</span>`;
+      } else {
+        const { gap, rank } = simulateQual(100);
+        const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+        if (gap === null) qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.55">currently unreachable</span></span>`;
+        else              qualHtml = `<span class="qual-pill qual-lcq">→ LCQ +${gap} elo${rankStr}</span>`;
+      }
     }
 
     const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
