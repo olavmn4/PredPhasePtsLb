@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCSR Ranked Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: transparent;
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 12px;
+    min-width: 280px;
+  }
+
+  #overlay {
+    background: rgba(8, 9, 9, 0.82);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 12px 16px;
+    display: none;
+    backdrop-filter: blur(4px);
+  }
+
+  #overlay.loaded { display: block; }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    padding-bottom: 10px;
+  }
+
+  .player-avatar {
+    width: 28px; height: 28px;
+    image-rendering: pixelated;
+    border-radius: 2px;
+  }
+
+  .player-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e2e8f0;
+    flex: 1;
+  }
+
+  .season-tag {
+    font-size: 9px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: .05em;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+    margin-bottom: 10px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .stat-label {
+    font-size: 8px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+
+  .stat-value.accent { color: #4ade80; }
+  .stat-value.gold   { color: #fbbf24; }
+
+  .qual-row {
+    background: rgba(255,255,255,0.04);
+    border-radius: 4px;
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .qual-label {
+    font-size: 9px;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .qual-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #4ade80;
+    text-align: right;
+  }
+
+  .qual-value.warn { color: #fbbf24; }
+  .qual-value.bad  { color: #f87171; }
+
+  .countdown-row {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 9px;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: .05em;
+  }
+
+  .error {
+    color: #f87171;
+    font-size: 11px;
+    padding: 8px;
+  }
+
+  .elo-color-netherite { color: #a78bfa; }
+  .elo-color-diamond   { color: #7dd3fc; }
+  .elo-color-emerald   { color: #86efac; }
+  .elo-color-gold      { color: #fde047; }
+  .elo-color-iron      { color: #d1d5db; }
+  .elo-color-coal      { color: #6b7280; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <div id="content"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const playerParam = params.get('player') ?? '';
+const BASE = 'https://olavmn4.github.io/PredPhasePtsLb';
+
+const PP_TABLE = [
+  [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
+  [5,40,48,60,79],[6,38,45,56,75],[7,36,43,53,71],[8,34,40,50,67],
+  [9,32,38,48,64],[10,30,36,45,60],[11,29,34,43,57],[12,27,33,41,54],
+  [13,26,31,39,52],[14,25,29,37,49],[15,23,28,35,47],[16,22,27,33,44],
+  [17,21,25,32,42],[18,20,24,30,40],[19,19,23,29,38],[20,18,22,27,36],
+  [25,14,17,22,29],[30,12,14,17,23],[40,8,9,12,16],[50,6,7,8,11],
+  [60,4,5,6,9],[70,4,5,6,8],[80,4,5,6,8],[100,4,4,4,4],
+];
+const p4Pts = r => {
+  for (let i = PP_TABLE.length - 1; i >= 0; i--) {
+    if (r >= PP_TABLE[i][0]) return PP_TABLE[i][4];
+  }
+  return 4;
+};
+
+const eloColor = r => r >= 2000 ? 'netherite' : r >= 1500 ? 'diamond' : r >= 1200 ? 'emerald' : r >= 900 ? 'gold' : r >= 600 ? 'iron' : 'coal';
+const fmtCountdown = t => {
+  const d = t - Math.floor(Date.now() / 1000);
+  if (d <= 0) return 'phase ended';
+  const days = Math.floor(d / 86400);
+  const hrs  = Math.floor((d % 86400) / 3600);
+  const mins = Math.floor((d % 3600) / 60);
+  if (days > 0) return `${days}d ${hrs}h remaining`;
+  if (hrs > 0)  return `${hrs}h ${mins}m remaining`;
+  return `${mins}m remaining`;
+};
+
+const PHASE_END = 1777507200;
+
+async function load() {
+  const el = document.getElementById('overlay');
+  const content = document.getElementById('content');
+
+  if (!playerParam) {
+    el.classList.add('loaded');
+    content.innerHTML = `<div class="error">Add ?player=YourUsername to the URL</div>`;
+    return;
+  }
+
+  try {
+    const [phaseRes, eloRes] = await Promise.all([
+      fetch('https://api.mcsrranked.com/phase-leaderboard?predicted=true'),
+      fetch('https://api.mcsrranked.com/leaderboard'),
+    ]);
+    const phaseJson = await phaseRes.json();
+    const eloJson   = await eloRes.json();
+
+    const rawPhase = phaseJson.data?.users ?? [];
+    const rawElo   = eloJson.data?.users   ?? [];
+
+    // Find player by nickname (case-insensitive) or uuid
+    const search = playerParam.toLowerCase();
+    const phasePlayer = rawPhase.find(u =>
+      u.nickname?.toLowerCase() === search || u.uuid === search
+    );
+    const eloPlayer = rawElo.find(u =>
+      u.nickname?.toLowerCase() === search || u.uuid === search
+    );
+
+    if (!phasePlayer && !eloPlayer) {
+      el.classList.add('loaded');
+      content.innerHTML = `<div class="error">Player "${playerParam}" not found</div>`;
+      return;
+    }
+
+    const uuid     = (phasePlayer ?? eloPlayer).uuid;
+    const nickname = (phasePlayer ?? eloPlayer).nickname;
+    const eloRate  = eloPlayer?.eloRate ?? phasePlayer?.eloRate ?? 0;
+    const eloRk    = eloPlayer?.eloRank ?? phasePlayer?.eloRank ?? 0;
+    const currentPP = phasePlayer?.seasonResult?.phasePoint ?? 0;
+    const predPP    = phasePlayer?.predPhasePoint ?? currentPP;
+    const gain      = predPP - currentPP;
+
+    // Compute PP rank
+    const sorted = [...rawPhase].sort((a, b) =>
+      b.predPhasePoint - a.predPhasePoint || a.eloRank - b.eloRank
+    );
+    const ppRk = sorted.findIndex(u => u.uuid === uuid) + 1;
+    const lcqPP = sorted.length >= 100 ? sorted[99].predPhasePoint : null;
+    const playoffsPP = sorted.length >= 12 ? sorted[11].predPhasePoint : null;
+
+    // Qual pill
+    let qualLabel, qualClass;
+    if (ppRk <= 12) {
+      qualLabel = `↑ seed — rank ${ppRk}`;
+      qualClass = 'accent';
+    } else if (lcqPP !== null && predPP >= lcqPP) {
+      // How much elo to playoffs?
+      const boundary = sorted[11];
+      const bPP = boundary.seasonResult?.phasePoint ?? 0;
+      const bEloRk = rawElo.find(u => u.uuid === boundary.uuid)?.eloRank ?? 12;
+      let gap = null;
+      const eloByRank = {};
+      [...rawElo].sort((a,b)=>(b.eloRate??0)-(a.eloRate??0)).forEach((u,i)=>{ eloByRank[i+1]=u.eloRate??0; });
+      for (let r = eloRk; r >= 1; r--) {
+        const myNew = currentPP + p4Pts(r);
+        const bNew  = bPP + p4Pts(bEloRk);
+        if (myNew > bNew) { gap = Math.max(0, (eloByRank[r] ?? 0) - eloRate); break; }
+      }
+      qualLabel = gap === null ? '→ Playoffs: currently unreachable' : gap === 0 ? '→ Playoffs: qualified' : `→ Playoffs: +${gap} elo`;
+      qualClass = gap === null ? 'bad' : gap === 0 ? 'accent' : 'warn';
+    } else {
+      qualLabel = predPP < (lcqPP ?? 0) ? `→ LCQ: ${predPP} / ${lcqPP} pred pts` : '→ LCQ: outside top 100';
+      qualClass = 'bad';
+    }
+
+    const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/28`;
+
+    content.innerHTML = `
+      <div class="player-row">
+        <img class="player-avatar" src="${avatarSrc}" onerror="this.style.display='none'">
+        <div class="player-name">${nickname}</div>
+        <span class="season-tag">S10 · P4</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat-label">pred pts</span>
+          <span class="stat-value accent">${predPP}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">pp rank</span>
+          <span class="stat-value">#${ppRk || '—'}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">elo</span>
+          <span class="stat-value elo-color-${eloColor(eloRate)}">${eloRate}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">elo rank</span>
+          <span class="stat-value">#${eloRk}</span>
+        </div>
+      </div>
+      <div class="qual-row">
+        <span class="qual-label">qualification</span>
+        <span class="qual-value ${qualClass}">${qualLabel}</span>
+      </div>
+      <div class="countdown-row">${fmtCountdown(PHASE_END)}</div>
+    `;
+
+    el.classList.add('loaded');
+  } catch(e) {
+    const el = document.getElementById('overlay');
+    el.classList.add('loaded');
+    document.getElementById('content').innerHTML = `<div class="error">Failed to load data</div>`;
+  }
+}
+
+load();
+setInterval(load, 60000);
+setInterval(() => {
+  const el = document.querySelector('.countdown-row');
+  if (el) el.textContent = fmtCountdown(PHASE_END);
+}, 1000);
+</script>
+</body>
+</html>
