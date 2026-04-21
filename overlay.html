@@ -28,9 +28,10 @@
 
   .ov-qual { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; gap: 12px; border-bottom: 1px solid var(--border); }
   .ov-qual-label { font-size: 9px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; flex-shrink: 0; }
-  .ov-qual-value { font-size: 12px; font-weight: 600; color: var(--accent); text-align: right; }
-  .ov-qual-value.warn { color: var(--amber); }
-  .ov-qual-value.bad  { color: var(--red); }
+  .qual-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 0; font-size: 10px; font-weight: 500; white-space: nowrap; }
+  .qual-lcq  { background: rgba(251,191,36,.06);  border: 1px solid rgba(251,191,36,.2);  color: #fbbf24; }
+  .qual-po   { background: rgba(96,165,250,.06);  border: 1px solid rgba(96,165,250,.2);  color: #60a5fa; }
+  .qual-seed { background: rgba(74,222,128,.05);  border: 1px solid rgba(74,222,128,.15); color: rgba(74,222,128,.75); }
 
   .ov-footer { padding: 5px 12px; background: var(--bg2); }
   .ov-countdown { font-size: 9px; color: var(--muted); letter-spacing: .04em; }
@@ -177,27 +178,27 @@ async function load() {
       return { gap: null, rank: null };
     }
 
-    // Build qual text — same logic as website
-    let qualText, qualClass;
+    // Build qual pill — same style as website
+    let qualHtml;
     if (!ppRk) {
-      qualText = '→ LCQ: 0 pred pts'; qualClass = 'bad';
+      qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.55">0 pred pts</span></span>`;
     } else if (ppRk === 1) {
-      qualText = '↑ seed #1 — top seed'; qualClass = '';
+      qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.7">top seed</span></span>`;
     } else if (ppRk <= 12) {
       const { gap, rank } = simulateQual(ppRk - 1);
-      if (gap === null)   { qualText = `↑ seed #${ppRk} — unreachable`;    qualClass = 'bad'; }
-      else if (gap === 0) { qualText = `↑ seed #${ppRk} — +0 elo (rank ${rank})`; qualClass = ''; }
-      else                { qualText = `↑ seed #${ppRk} — +${gap} elo (rank ${rank})`; qualClass = 'warn'; }
+      const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+      if (gap === null)   qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.55">currently unreachable</span></span>`;
+      else                qualHtml = `<span class="qual-pill qual-seed">↑ seed +${gap} elo${rankStr}</span>`;
     } else if (lcqPP !== null && predPP >= lcqPP) {
       const { gap, rank } = simulateQual(12);
-      if (gap === null)   { qualText = '→ Playoffs: currently unreachable'; qualClass = 'bad'; }
-      else if (gap === 0) { qualText = `→ Playoffs: +0 elo (rank ${rank})`; qualClass = ''; }
-      else                { qualText = `→ Playoffs: +${gap} elo (rank ${rank})`; qualClass = 'warn'; }
+      const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+      if (gap === null)   qualHtml = `<span class="qual-pill qual-po">→ Playoffs <span style="opacity:.55">currently unreachable</span></span>`;
+      else                qualHtml = `<span class="qual-pill qual-po">→ Playoffs +${gap} elo${rankStr}</span>`;
     } else {
       const { gap, rank } = simulateQual(100);
-      if (gap === null)   { qualText = '→ LCQ: currently unreachable'; qualClass = 'bad'; }
-      else if (gap === 0) { qualText = `→ LCQ: +0 elo (rank ${rank})`;  qualClass = ''; }
-      else                { qualText = `→ LCQ: +${gap} elo (rank ${rank})`; qualClass = 'warn'; }
+      const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+      if (gap === null)   qualHtml = `<span class="qual-pill qual-lcq">→ LCQ <span style="opacity:.55">currently unreachable</span></span>`;
+      else                qualHtml = `<span class="qual-pill qual-lcq">→ LCQ +${gap} elo${rankStr}</span>`;
     }
 
     const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
@@ -226,7 +227,7 @@ async function load() {
       </div>
       <div class="ov-qual">
         <span class="ov-qual-label">to qualify</span>
-        <span class="ov-qual-value ${qualClass}">${qualText}</span>
+        ${qualHtml}
       </div>
       <div class="ov-footer">
         <span class="ov-countdown" id="ov-countdown">${fmtCountdown(PHASE_END)}</span>
