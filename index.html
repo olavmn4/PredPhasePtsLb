@@ -366,7 +366,7 @@
             <th data-col="gain" class="num">+gain<span class="sort-icon">↕</span></th>
             <th data-col="elo" class="num">elo<span class="sort-icon">↕</span></th>
             <th data-col="eloRank" class="num">elo rank<span class="sort-icon">↕</span></th>
-            <th class="no-sort">to qualify</th>
+            <th id="th-qual" class="num" style="cursor:pointer" title="click to sort by qualification gap">to qualify <span id="qual-sort-icon" style="opacity:.45;font-size:9px">↕</span></th>
             <th data-col="lcqHeadstart" class="num" title="LCQ headstart: +1 per 10 phase pts above the LCQ cutoff">LCQ headstart<span class="sort-icon">↕</span></th>
             <th data-col="lastPlayed" class="num">last played<span class="sort-icon">↕</span></th>
             <th data-col="winRate"        class="num extra-col" style="display:none" data-ekey="winRate">win rate<br><span class="col-mode-toggle" data-key="winRate">S10</span><span class="sort-icon">↕</span></th>
@@ -553,9 +553,10 @@ document.getElementById('pp-ref-tbody').innerHTML =
 let rawElo      = [];
 let eloByRank   = {};
 let playoffsCutoffPP = 159; // updated from live data in buildMerged
-let phaseEndsAt = null;
+let phaseEndsAt = 1777507200; // P4 end: April 30, 2026 02:00 AM Oslo (CEST)
 let sortState   = { col:'ppRank', asc:true };
 let filterMode  = 'all';
+let qualSortMode = null; // null | 'playoffs' | 'lcq' | 'seed'
 let searchQuery = '';
 let extraStatsOn   = false;
 let extraStatsCache = {};
@@ -826,7 +827,8 @@ async function fetchAll(spin=true) {
 
     if (pj.status === 'success') {
       rawPhase    = pj.data.users || [];
-      phaseEndsAt = pj.data.phase?.endsAt ?? null;
+      // Use hardcoded P4 end date — API date may be incorrect
+      // phaseEndsAt = pj.data.phase?.endsAt ?? null;
     }
     if (ej.status === 'success') rawElo = ej.data.users || [];
 
@@ -993,6 +995,16 @@ function getRows() {
     else if (col==='eloRank')   { va=a.eloRk;        vb=b.eloRk; }
     else if (col==='phaseMove') { va=a.phaseMove??-999; vb=b.phaseMove??-999; }
     else if (col==='lastPlayed') { va=a.lastPlayed??0; vb=b.lastPlayed??0; }
+    else if (col==='qualGap') {
+      // Sort by gap within the active qualSortMode group; other groups go to bottom
+      const typeMap = { playoffs: 'po', lcq: 'lcq', seed: 'seed' };
+      const targetType = typeMap[qualSortMode];
+      const gapOf = u => {
+        if (!u.qualData || u.qualData.type !== targetType) return Infinity;
+        return u.qualData.gap ?? Infinity;
+      };
+      va = gapOf(a); vb = gapOf(b);
+    }
     else if (col==='lcqHeadstart') {
       const cutoff = mergedData.filter(u=>!u._isZeroPP).length >= 100 ? mergedData.filter(u=>!u._isZeroPP)[99].predPP : 0;
       va = a.predPP >= cutoff ? Math.floor((a.predPP - cutoff) / 10) : -1;
@@ -1155,6 +1167,35 @@ document.getElementById('extra-mode-all-btn').addEventListener('click', () => {
     t.textContent = isTotal ? 'all' : 'S10';
     t.classList.toggle('total', isTotal);
   });
+  renderTable();
+});
+
+document.getElementById('th-qual').addEventListener('click', () => {
+  const modes = ['playoffs', 'lcq', 'seed'];
+  const labels = { playoffs: 'playoffs ↑', lcq: 'lcq ↑', seed: 'seed ↑' };
+  const next = qualSortMode === null ? 'playoffs'
+    : qualSortMode === 'playoffs' ? 'lcq'
+    : qualSortMode === 'lcq' ? 'seed'
+    : null;
+  qualSortMode = next;
+  sortState = { col: next ? 'qualGap' : 'ppRank', asc: true };
+  const icon = document.getElementById('qual-sort-icon');
+  const th   = document.getElementById('th-qual');
+  document.querySelectorAll('#main-table thead th').forEach(t => {
+    t.classList.remove('sorted');
+    const ic = t.querySelector('.sort-icon');
+    if (ic) ic.textContent = '↕';
+  });
+  if (next) {
+    th.classList.add('sorted');
+    icon.textContent = `${labels[next]}`;
+    icon.style.opacity = '1';
+    icon.style.color = next === 'playoffs' ? '#60a5fa' : next === 'lcq' ? '#fbbf24' : '#4ade80';
+  } else {
+    icon.textContent = '↕';
+    icon.style.opacity = '.45';
+    icon.style.color = '';
+  }
   renderTable();
 });
 
