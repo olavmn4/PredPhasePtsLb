@@ -224,16 +224,17 @@ async function load() {
         else                   qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.3">·</span> +${gap} elo${rankStr}</span>`;
       }
     } else if (forceSeed !== null) {
-      // Specific seed target e.g. target=seed3
-      if (forceSeed < 1 || forceSeed > 12) {
-        qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.55">invalid seed (1–12)</span></span>`;
+      if (forceSeed < 1 || forceSeed > 100) {
+        qualHtml = `<span class="qual-pill qual-seed">↑ position <span style="opacity:.55">invalid (1–100)</span></span>`;
       } else if (ppRk && ppRk <= forceSeed) {
-        qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} <span style="opacity:.7">already there</span></span>`;
+        const cls = forceSeed <= 12 ? 'qual-seed' : 'qual-lcq';
+        qualHtml = `<span class="qual-pill ${cls}">↑ position #${forceSeed} <span style="opacity:.7">already there</span></span>`;
       } else {
+        const cls = forceSeed <= 12 ? 'qual-seed' : 'qual-lcq';
         const { gap, rank } = simulateQual(forceSeed);
         const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
-        if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} <span style="opacity:.55">currently unreachable</span></span>`;
-        else              qualHtml = `<span class="qual-pill qual-seed">↑ seed #${forceSeed} +${gap} elo${rankStr}</span>`;
+        if (gap === null) qualHtml = `<span class="qual-pill ${cls}">↑ position #${forceSeed} <span style="opacity:.55">currently unreachable</span></span>`;
+        else              qualHtml = `<span class="qual-pill ${cls}">↑ position #${forceSeed} +${gap} elo${rankStr}</span>`;
       }
     } else if (targetParam === 'playoffs') {
       const { gap, rank } = simulateQual(12);
