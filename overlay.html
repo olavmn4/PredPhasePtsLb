@@ -197,12 +197,12 @@ async function load() {
     const isLCQ   = lcqPP !== null && predPP >= lcqPP;
 
     if (isTop12 && ppRk === 1) {
-      qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.7">top seed</span></span>`;
+      qualHtml = `<span class="qual-pill qual-seed">↑ seed #1 <span style="opacity:.7">top seed</span></span>`;
     } else if (isTop12) {
       const { gap, rank } = simulateQual(ppRk - 1);
       const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
-      if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed <span style="opacity:.55">currently unreachable</span></span>`;
-      else              qualHtml = `<span class="qual-pill qual-seed">↑ seed +${gap} elo${rankStr}</span>`;
+      if (gap === null) qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} <span style="opacity:.55">currently unreachable</span></span>`;
+      else              qualHtml = `<span class="qual-pill qual-seed">↑ seed #${ppRk - 1} +${gap} elo${rankStr}</span>`;
     } else if (isLCQ) {
       const { gap, rank } = simulateQual(12);
       const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
