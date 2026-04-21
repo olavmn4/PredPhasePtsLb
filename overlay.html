@@ -16,8 +16,8 @@
   #overlay { background: rgba(8,9,9,0.88); border: 1px solid var(--border); display: none; overflow: hidden; }
   #overlay.loaded { display: block; }
 
-  .ov-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg2); }
-  .ov-avatar { width: 24px; height: 24px; image-rendering: pixelated; }
+  .ov-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+  .ov-avatar { width: 20px; height: 20px; image-rendering: pixelated; }
   .ov-countdown { font-size: 9px; color: var(--muted); letter-spacing: .04em; }
 
   .ov-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border); }
@@ -42,7 +42,7 @@
 <script>
 const params      = new URLSearchParams(location.search);
 const playerParam = (params.get('player') ?? '').toLowerCase();
-const zoom = parseFloat(params.get('zoom') ?? '1');
+const zoom = parseFloat(params.get('zoom') ?? '2');
 document.documentElement.style.zoom = zoom;
 const PHASE_END   = 1777507200;
 const HIDDEN      = new Set(['KenanKardes','LoveWalter','nyachloe','Hinart']);
