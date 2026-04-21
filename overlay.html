@@ -191,6 +191,17 @@ async function load() {
       return { gap: null, rank: null };
     }
 
+    // Find elo needed to reach a target predPP (currentPP + pts at some rank >= targetPP)
+    function simulateForPP(targetPP) {
+      for (let r = simEloRk; r >= 1; r--) {
+        if (currentPP + curPts(r) >= targetPP) {
+          const targetElo = eloByRank[r] ?? 0;
+          return { gap: Math.max(0, targetElo - eloRate), rank: r };
+        }
+      }
+      return { gap: null, rank: null };
+    }
+
     // Parse target param
     const seedMatch = targetParam.match(/^seed(\d+)$/);
     const forceSeed = seedMatch ? parseInt(seedMatch[1]) : null; // e.g. target=seed3 → 3
@@ -201,16 +212,16 @@ async function load() {
     const isLCQ   = lcqPP !== null && predPP >= lcqPP;
 
     if (targetParam === 'lcqhs') {
-      // LCQ headstart: show gap to next headstart threshold
       if (lcqPP === null) {
         qualHtml = `<span class="qual-pill qual-lcq">LCQ headstart <span style="opacity:.55">no cutoff data</span></span>`;
       } else {
         const currentHS = predPP >= lcqPP ? Math.floor((predPP - lcqPP) / 10) : 0;
         const nextHSPP  = lcqPP + (currentHS + 1) * 10;
-        const ptsNeeded = nextHSPP - predPP;
-        qualHtml = ptsNeeded <= 0
-          ? `<span class="qual-pill qual-lcq">HS ${currentHS} <span style="opacity:.7">next: +${10 - ((predPP - lcqPP) % 10)} pts</span></span>`
-          : `<span class="qual-pill qual-lcq">HS #${currentHS + 1} <span style="opacity:.7">needs +${ptsNeeded} pts</span></span>`;
+        const { gap, rank } = simulateForPP(nextHSPP);
+        const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
+        if (gap === 0)         qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.7">+0 elo${rankStr}</span></span>`;
+        else if (gap === null) qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.55">currently unreachable</span></span>`;
+        else                   qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt +${gap} elo${rankStr}</span>`;
       }
     } else if (forceSeed !== null) {
       // Specific seed target e.g. target=seed3
