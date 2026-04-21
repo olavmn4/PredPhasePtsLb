@@ -221,7 +221,7 @@ async function load() {
         const rankStr = rank != null ? ` <span style="opacity:.5">(rank ${rank})</span>` : '';
         if (gap === 0)         qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.7">+0 elo${rankStr}</span></span>`;
         else if (gap === null) qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.55">currently unreachable</span></span>`;
-        else                   qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt +${gap} elo${rankStr}</span>`;
+        else                   qualHtml = `<span class="qual-pill qual-lcq">+1 LCQ headstart pt <span style="opacity:.3">·</span> +${gap} elo${rankStr}</span>`;
       }
     } else if (forceSeed !== null) {
       // Specific seed target e.g. target=seed3
