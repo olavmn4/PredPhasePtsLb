@@ -2,134 +2,173 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MCSR Ranked Overlay</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>MCSR Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:     #080909;
+    --bg2:    #0d0e0f;
+    --bg3:    #111213;
+    --border: #1e2022;
+    --text:   #d4d8dd;
+    --muted:  #525861;
+    --accent: #4ade80;
+    --red:    #f87171;
+    --amber:  #fbbf24;
+  }
 
   body {
     background: transparent;
     font-family: 'IBM Plex Mono', monospace;
-    padding: 12px;
-    min-width: 280px;
+    font-size: 13px;
+    color: var(--text);
+    padding: 0;
+    margin: 0;
+    min-width: 300px;
   }
 
   #overlay {
-    background: rgba(8, 9, 9, 0.82);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 6px;
-    padding: 12px 16px;
+    background: rgba(8,9,9,0.88);
+    border: 1px solid var(--border);
+    border-radius: 0;
     display: none;
-    backdrop-filter: blur(4px);
+    overflow: hidden;
   }
 
   #overlay.loaded { display: block; }
 
-  .player-row {
+  /* ── Header strip ── */
+  .ov-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    padding-bottom: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
   }
 
-  .player-avatar {
-    width: 28px; height: 28px;
+  .ov-avatar {
+    width: 24px; height: 24px;
     image-rendering: pixelated;
-    border-radius: 2px;
+    flex-shrink: 0;
   }
 
-  .player-name {
-    font-size: 14px;
+  .ov-name {
+    font-size: 13px;
     font-weight: 600;
-    color: #e2e8f0;
     flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .season-tag {
-    font-size: 9px;
-    color: rgba(255,255,255,0.3);
+  .ov-tag {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--accent);
+    background: rgba(74,222,128,.07);
+    border: 1px solid rgba(74,222,128,.18);
+    padding: 1px 6px;
     letter-spacing: .05em;
+    flex-shrink: 0;
   }
 
-  .stats-grid {
+  /* ── Stats grid ── */
+  .ov-stats {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px 16px;
-    margin-bottom: 10px;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--border);
   }
 
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
+  .ov-stat {
+    padding: 8px 12px;
+    border-right: 1px solid var(--border);
   }
+  .ov-stat:last-child { border-right: none; }
 
-  .stat-label {
+  .ov-stat-label {
     font-size: 8px;
-    color: rgba(255,255,255,0.3);
-    letter-spacing: .08em;
+    color: var(--muted);
+    letter-spacing: .07em;
     text-transform: uppercase;
+    margin-bottom: 2px;
   }
 
-  .stat-value {
-    font-size: 16px;
+  .ov-stat-value {
+    font-size: 15px;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--text);
   }
 
-  .stat-value.accent { color: #4ade80; }
-  .stat-value.gold   { color: #fbbf24; }
+  .ov-stat-value.accent { color: var(--accent); }
 
-  .qual-row {
-    background: rgba(255,255,255,0.04);
-    border-radius: 4px;
-    padding: 7px 10px;
+  /* ── Qual row ── */
+  .ov-qual {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    padding: 7px 12px;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
   }
 
-  .qual-label {
+  .ov-qual-label {
     font-size: 9px;
-    color: rgba(255,255,255,0.35);
+    color: var(--muted);
     letter-spacing: .06em;
     text-transform: uppercase;
+    flex-shrink: 0;
   }
 
-  .qual-value {
+  .ov-qual-value {
     font-size: 12px;
     font-weight: 600;
-    color: #4ade80;
+    color: var(--accent);
     text-align: right;
   }
 
-  .qual-value.warn { color: #fbbf24; }
-  .qual-value.bad  { color: #f87171; }
+  .ov-qual-value.warn { color: var(--amber); }
+  .ov-qual-value.bad  { color: var(--red); }
 
-  .countdown-row {
-    margin-top: 8px;
-    text-align: center;
-    font-size: 9px;
-    color: rgba(255,255,255,0.2);
+  /* ── Footer ── */
+  .ov-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    background: var(--bg2);
+  }
+
+  .ov-footer-label {
+    font-size: 8px;
+    color: var(--muted);
     letter-spacing: .05em;
   }
 
-  .error {
-    color: #f87171;
-    font-size: 11px;
-    padding: 8px;
+  .ov-countdown {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: .04em;
   }
 
-  .elo-color-netherite { color: #a78bfa; }
-  .elo-color-diamond   { color: #7dd3fc; }
-  .elo-color-emerald   { color: #86efac; }
-  .elo-color-gold      { color: #fde047; }
-  .elo-color-iron      { color: #d1d5db; }
-  .elo-color-coal      { color: #6b7280; }
+  .ov-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .error {
+    padding: 12px;
+    font-size: 11px;
+    color: var(--red);
+  }
 </style>
 </head>
 <body>
@@ -138,46 +177,41 @@
 </div>
 
 <script>
-const params = new URLSearchParams(location.search);
-const playerParam = params.get('player') ?? '';
-const BASE = 'https://olavmn4.github.io/PredPhasePtsLb';
+const params      = new URLSearchParams(location.search);
+const playerParam = (params.get('player') ?? '').toLowerCase();
+const PHASE_END   = 1777507200;
 
 const PP_TABLE = [
-  [1,50,60,75,100],[2,47,57,71,94],[3,45,53,67,89],[4,42,50,63,84],
-  [5,40,48,60,79],[6,38,45,56,75],[7,36,43,53,71],[8,34,40,50,67],
-  [9,32,38,48,64],[10,30,36,45,60],[11,29,34,43,57],[12,27,33,41,54],
-  [13,26,31,39,52],[14,25,29,37,49],[15,23,28,35,47],[16,22,27,33,44],
-  [17,21,25,32,42],[18,20,24,30,40],[19,19,23,29,38],[20,18,22,27,36],
-  [25,14,17,22,29],[30,12,14,17,23],[40,8,9,12,16],[50,6,7,8,11],
-  [60,4,5,6,9],[70,4,5,6,8],[80,4,5,6,8],[100,4,4,4,4],
+  [1,100],[2,94],[3,89],[4,84],[5,79],[6,75],[7,71],[8,67],[9,64],[10,60],
+  [11,57],[12,54],[13,52],[14,49],[15,47],[16,44],[17,42],[18,40],[19,38],[20,36],
+  [25,29],[30,23],[40,16],[50,11],[60,9],[70,8],[80,8],[100,4],
 ];
 const p4Pts = r => {
   for (let i = PP_TABLE.length - 1; i >= 0; i--) {
-    if (r >= PP_TABLE[i][0]) return PP_TABLE[i][4];
+    if (r >= PP_TABLE[i][0]) return PP_TABLE[i][1];
   }
   return 4;
 };
 
-const eloColor = r => r >= 2000 ? 'netherite' : r >= 1500 ? 'diamond' : r >= 1200 ? 'emerald' : r >= 900 ? 'gold' : r >= 600 ? 'iron' : 'coal';
+const eloCol = r => r >= 2000 ? '#a78bfa' : r >= 1500 ? '#7dd3fc' : r >= 1200 ? '#86efac' : r >= 900 ? '#fde047' : r >= 600 ? '#d1d5db' : '#6b7280';
+
 const fmtCountdown = t => {
   const d = t - Math.floor(Date.now() / 1000);
-  if (d <= 0) return 'phase ended';
+  if (d <= 0) return 'season ended';
   const days = Math.floor(d / 86400);
   const hrs  = Math.floor((d % 86400) / 3600);
   const mins = Math.floor((d % 3600) / 60);
-  if (days > 0) return `${days}d ${hrs}h remaining`;
-  if (hrs > 0)  return `${hrs}h ${mins}m remaining`;
-  return `${mins}m remaining`;
+  if (days > 0) return `${days}d ${hrs}h left`;
+  if (hrs > 0)  return `${hrs}h ${mins}m left`;
+  return `${mins}m left`;
 };
 
-const PHASE_END = 1777507200;
-
 async function load() {
-  const el = document.getElementById('overlay');
+  const overlay = document.getElementById('overlay');
   const content = document.getElementById('content');
 
   if (!playerParam) {
-    el.classList.add('loaded');
+    overlay.classList.add('loaded');
     content.innerHTML = `<div class="error">Add ?player=YourUsername to the URL</div>`;
     return;
   }
@@ -193,99 +227,95 @@ async function load() {
     const rawPhase = phaseJson.data?.users ?? [];
     const rawElo   = eloJson.data?.users   ?? [];
 
-    // Find player by nickname (case-insensitive) or uuid
-    const search = playerParam.toLowerCase();
-    const phasePlayer = rawPhase.find(u =>
-      u.nickname?.toLowerCase() === search || u.uuid === search
-    );
-    const eloPlayer = rawElo.find(u =>
-      u.nickname?.toLowerCase() === search || u.uuid === search
-    );
+    const phasePlayer = rawPhase.find(u => u.nickname?.toLowerCase() === playerParam || u.uuid === playerParam);
+    const eloPlayer   = rawElo.find(u => u.nickname?.toLowerCase() === playerParam || u.uuid === playerParam);
 
     if (!phasePlayer && !eloPlayer) {
-      el.classList.add('loaded');
+      overlay.classList.add('loaded');
       content.innerHTML = `<div class="error">Player "${playerParam}" not found</div>`;
       return;
     }
 
-    const uuid     = (phasePlayer ?? eloPlayer).uuid;
-    const nickname = (phasePlayer ?? eloPlayer).nickname;
-    const eloRate  = eloPlayer?.eloRate ?? phasePlayer?.eloRate ?? 0;
-    const eloRk    = eloPlayer?.eloRank ?? phasePlayer?.eloRank ?? 0;
+    const uuid      = (phasePlayer ?? eloPlayer).uuid;
+    const nickname  = (phasePlayer ?? eloPlayer).nickname;
+    const eloRate   = eloPlayer?.eloRate ?? phasePlayer?.eloRate ?? 0;
+    const eloRk     = eloPlayer?.eloRank ?? phasePlayer?.eloRank ?? 0;
     const currentPP = phasePlayer?.seasonResult?.phasePoint ?? 0;
     const predPP    = phasePlayer?.predPhasePoint ?? currentPP;
     const gain      = predPP - currentPP;
 
-    // Compute PP rank
     const sorted = [...rawPhase].sort((a, b) =>
       b.predPhasePoint - a.predPhasePoint || a.eloRank - b.eloRank
     );
-    const ppRk = sorted.findIndex(u => u.uuid === uuid) + 1;
+    const ppRk  = sorted.findIndex(u => u.uuid === uuid) + 1 || '—';
     const lcqPP = sorted.length >= 100 ? sorted[99].predPhasePoint : null;
-    const playoffsPP = sorted.length >= 12 ? sorted[11].predPhasePoint : null;
 
-    // Qual pill
-    let qualLabel, qualClass;
-    if (ppRk <= 12) {
-      qualLabel = `↑ seed — rank ${ppRk}`;
-      qualClass = 'accent';
+    // eloByRank for qual gap
+    const eloByRank = {};
+    [...rawElo].sort((a,b) => (b.eloRate??0) - (a.eloRate??0)).forEach((u,i) => { eloByRank[i+1] = u.eloRate ?? 0; });
+
+    // Build qual string
+    let qualText, qualClass;
+    if (ppRk !== '—' && ppRk <= 12) {
+      qualText  = `↑ seed — rank ${ppRk}`;
+      qualClass = '';
     } else if (lcqPP !== null && predPP >= lcqPP) {
-      // How much elo to playoffs?
       const boundary = sorted[11];
-      const bPP = boundary.seasonResult?.phasePoint ?? 0;
-      const bEloRk = rawElo.find(u => u.uuid === boundary.uuid)?.eloRank ?? 12;
+      const bPP   = boundary?.seasonResult?.phasePoint ?? 0;
+      const bEloRk = rawElo.find(u => u.uuid === boundary?.uuid)?.eloRank ?? 12;
       let gap = null;
-      const eloByRank = {};
-      [...rawElo].sort((a,b)=>(b.eloRate??0)-(a.eloRate??0)).forEach((u,i)=>{ eloByRank[i+1]=u.eloRate??0; });
       for (let r = eloRk; r >= 1; r--) {
-        const myNew = currentPP + p4Pts(r);
-        const bNew  = bPP + p4Pts(bEloRk);
-        if (myNew > bNew) { gap = Math.max(0, (eloByRank[r] ?? 0) - eloRate); break; }
+        if (currentPP + p4Pts(r) > bPP + p4Pts(bEloRk)) {
+          gap = Math.max(0, (eloByRank[r] ?? 0) - eloRate);
+          break;
+        }
       }
-      qualLabel = gap === null ? '→ Playoffs: currently unreachable' : gap === 0 ? '→ Playoffs: qualified' : `→ Playoffs: +${gap} elo`;
-      qualClass = gap === null ? 'bad' : gap === 0 ? 'accent' : 'warn';
+      qualText  = gap === null ? '→ Playoffs: unreachable' : gap === 0 ? '→ Playoffs: qualified' : `→ Playoffs: +${gap} elo`;
+      qualClass = gap === null ? 'bad' : gap === 0 ? '' : 'warn';
     } else {
-      qualLabel = predPP < (lcqPP ?? 0) ? `→ LCQ: ${predPP} / ${lcqPP} pred pts` : '→ LCQ: outside top 100';
+      qualText  = lcqPP ? `→ LCQ: needs ${lcqPP - predPP} more pts` : '→ LCQ: outside top 100';
       qualClass = 'bad';
     }
 
-    const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/28`;
+    const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
 
     content.innerHTML = `
-      <div class="player-row">
-        <img class="player-avatar" src="${avatarSrc}" onerror="this.style.display='none'">
-        <div class="player-name">${nickname}</div>
-        <span class="season-tag">S10 · P4</span>
+      <div class="ov-header">
+        <img class="ov-avatar" src="${avatarSrc}" onerror="this.style.display='none'">
+        <span class="ov-name">${nickname}</span>
+        <span class="ov-tag">S10 · P4</span>
       </div>
-      <div class="stats-grid">
-        <div class="stat">
-          <span class="stat-label">pred pts</span>
-          <span class="stat-value accent">${predPP}</span>
+      <div class="ov-stats">
+        <div class="ov-stat">
+          <div class="ov-stat-label">pred pts</div>
+          <div class="ov-stat-value accent">${predPP}</div>
         </div>
-        <div class="stat">
-          <span class="stat-label">pp rank</span>
-          <span class="stat-value">#${ppRk || '—'}</span>
+        <div class="ov-stat">
+          <div class="ov-stat-label">pp rank</div>
+          <div class="ov-stat-value">#${ppRk}</div>
         </div>
-        <div class="stat">
-          <span class="stat-label">elo</span>
-          <span class="stat-value elo-color-${eloColor(eloRate)}">${eloRate}</span>
+        <div class="ov-stat">
+          <div class="ov-stat-label">elo</div>
+          <div class="ov-stat-value" style="color:${eloCol(eloRate)}">${eloRate}</div>
         </div>
-        <div class="stat">
-          <span class="stat-label">elo rank</span>
-          <span class="stat-value">#${eloRk}</span>
+        <div class="ov-stat">
+          <div class="ov-stat-label">elo rank</div>
+          <div class="ov-stat-value">#${eloRk}</div>
         </div>
       </div>
-      <div class="qual-row">
-        <span class="qual-label">qualification</span>
-        <span class="qual-value ${qualClass}">${qualLabel}</span>
+      <div class="ov-qual">
+        <span class="ov-qual-label">to qualify</span>
+        <span class="ov-qual-value ${qualClass}">${qualText}</span>
       </div>
-      <div class="countdown-row">${fmtCountdown(PHASE_END)}</div>
+      <div class="ov-footer">
+        <span class="ov-footer-label"><span class="ov-dot"></span>live · updates every 60s</span>
+        <span class="ov-countdown" id="ov-countdown">${fmtCountdown(PHASE_END)}</span>
+      </div>
     `;
 
-    el.classList.add('loaded');
+    overlay.classList.add('loaded');
   } catch(e) {
-    const el = document.getElementById('overlay');
-    el.classList.add('loaded');
+    document.getElementById('overlay').classList.add('loaded');
     document.getElementById('content').innerHTML = `<div class="error">Failed to load data</div>`;
   }
 }
@@ -293,7 +323,7 @@ async function load() {
 load();
 setInterval(load, 60000);
 setInterval(() => {
-  const el = document.querySelector('.countdown-row');
+  const el = document.getElementById('ov-countdown');
   if (el) el.textContent = fmtCountdown(PHASE_END);
 }, 1000);
 </script>
