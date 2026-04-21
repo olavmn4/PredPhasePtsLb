@@ -736,7 +736,7 @@ function buildMerged() {
 
     } else if (ppRk <= 12) {
       const { gap, rank } = simulateQual(ppRk - 1);
-      qualData = { type:'seed', gap, rank };
+      qualData = { type:'seed', gap, rank, targetSeed: ppRk - 1 };
 
     } else if (lcqThresholdPP !== null && predPP >= lcqThresholdPP) {
       const { gap, rank } = simulateQual(12);
@@ -785,7 +785,7 @@ function phaseMoveCell(v) {
 function qualPill(q) {
   if (!q) return '';
   if (q.type === 'top') return `<span class="qual-top">—</span>`;
-  const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:'↑ seed' };
+  const labels = { lcq:'→ LCQ', po:'→ Playoffs', seed:`↑ seed #${q.targetSeed ?? ''}` };
   const cls    = { lcq:'qual-lcq', po:'qual-po', seed:'qual-seed' };
   const label  = labels[q.type];
   const klass  = cls[q.type];
