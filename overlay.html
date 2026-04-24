@@ -35,6 +35,25 @@
   .qual-seed { background: rgba(74,222,128,.05);  border: 1px solid rgba(74,222,128,.15); color: rgba(74,222,128,.75); }
 
   .error { padding: 12px; font-size: 11px; color: var(--red); }
+
+  @keyframes borderFlash {
+    0%   { box-shadow: 0 0 0 0px var(--flash-color); border-color: var(--flash-color); }
+    30%  { box-shadow: 0 0 18px 4px var(--flash-color); border-color: var(--flash-color); }
+    100% { box-shadow: 0 0 0 0px transparent; border-color: var(--border); }
+  }
+  @keyframes pillPop {
+    0%   { transform: scale(1); }
+    25%  { transform: scale(1.12); filter: brightness(1.6); }
+    60%  { transform: scale(1.05); filter: brightness(1.3); }
+    100% { transform: scale(1); filter: brightness(1); }
+  }
+  .threshold-flash {
+    animation: borderFlash 1.8s ease-out forwards;
+  }
+  .pill-pop .qual-pill {
+    animation: pillPop 1.2s cubic-bezier(.36,.07,.19,.97) forwards;
+    display: inline-block;
+  }
 </style>
 </head>
 <body>
@@ -272,6 +291,21 @@ async function load() {
 
     const avatarSrc = `https://minotar.net/helm/${uuid.replace(/-/g,'')}/24`;
 
+    // Determine current stage key for change detection
+    const stageKey = isTop12 ? `seed-${ppRk}` : isLCQ ? 'lcq' : `below-${predPP}`;
+    const hsKey    = targetParam === 'lcqhs' && lcqPP !== null
+      ? Math.floor((predPP - lcqPP) / 10)
+      : null;
+    const storageKey = `ov-stage-${playerParam}`;
+    const prev = sessionStorage.getItem(storageKey);
+    const prevHS = sessionStorage.getItem(`${storageKey}-hs`);
+
+    const stageChanged = prev !== null && prev !== stageKey;
+    const hsChanged    = hsKey !== null && prevHS !== null && prevHS !== String(hsKey);
+
+    sessionStorage.setItem(storageKey, stageKey);
+    if (hsKey !== null) sessionStorage.setItem(`${storageKey}-hs`, hsKey);
+
     content.innerHTML = `
       <div class="ov-header">
         <img class="ov-avatar" src="${avatarSrc}" onerror="this.style.display='none'">
@@ -291,11 +325,30 @@ async function load() {
           <div class="ov-stat-value">#${eloRk}</div>
         </div>
       </div>
-      <div class="ov-qual">
+      <div class="ov-qual" id="ov-qual-row">
         <span class="ov-qual-label">to qualify</span>
-        ${qualHtml}
+        <span id="ov-qual-pill">${qualHtml}</span>
       </div>
     `;
+
+    // Trigger animation if stage changed
+    if (stageChanged || hsChanged) {
+      const flashColor = isTop12 ? '#4ade80' : isLCQ ? '#60a5fa' : '#fbbf24';
+      const overlayEl = document.getElementById('overlay');
+      overlayEl.style.setProperty('--flash-color', flashColor);
+      overlayEl.classList.remove('threshold-flash');
+      void overlayEl.offsetWidth; // force reflow
+      overlayEl.classList.add('threshold-flash');
+
+      const pillWrap = document.getElementById('ov-qual-pill');
+      pillWrap.classList.remove('pill-pop');
+      void pillWrap.offsetWidth;
+      pillWrap.classList.add('pill-pop');
+
+      overlayEl.addEventListener('animationend', () => {
+        overlayEl.classList.remove('threshold-flash');
+      }, { once: true });
+    }
 
     overlay.classList.add('loaded');
   } catch(e) {
