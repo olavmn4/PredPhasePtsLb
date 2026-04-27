@@ -316,6 +316,12 @@
       <span id="phase-countdown"></span>
       <span>updated <span id="last-updated">—</span></span>
       <span style="color:var(--border);font-family:'IBM Plex Mono',monospace;font-size:10px;margin-left:auto">@Prolav</span>
+      <button class="btn-refresh" id="overlay-btn" title="OBS Overlay">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+        </svg>
+        OBS overlay
+      </button>
       <button class="btn-refresh" id="btn-refresh" title="Refresh now">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
@@ -498,8 +504,60 @@
   </div>
 </div>
 
+<div id="overlay-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div id="overlay-modal" style="background:var(--bg2);border:1px solid var(--border);max-width:560px;width:100%;padding:28px 28px 24px;position:relative;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text);margin:20px">
+    <button id="overlay-modal-close" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1">✕</button>
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">OBS Overlay</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:20px">shows predicted phase pts, elo, and qualification status live</div>
 
-<footer>
+    <div style="color:var(--muted);font-size:11px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px">build your url</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input id="ov-player-input" placeholder="your username" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 10px;outline:none;min-width:0" />
+    </div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:6px">what do you want the overlay to track? <span style="color:var(--text)">default</span> is recommended for most players - it automatically shows the most relevant goal based on your current rank.</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <select id="ov-target-select" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 10px;outline:none;cursor:pointer">
+        <option value="">default</option>
+        <option value="playoffs">playoffs - gap to top 12</option>
+        <option value="lcq">lcq - gap to top 100</option>
+        <option value="lcqhs">lcqhs - next LCQ headstart point</option>
+        <option value="seed">seed x - gap to a specific position</option>
+      </select>
+    </div>
+    <div id="ov-seed-row" style="display:none;margin-bottom:10px">
+      <input id="ov-seed-input" type="number" min="1" max="12" placeholder="seed number (1–12)" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 10px;outline:none" />
+    </div>
+    <div id="ov-url-box" style="background:var(--bg3);border:1px solid var(--border);padding:9px 10px;margin-bottom:6px;cursor:pointer;position:relative;user-select:all" title="click to copy">
+      <span id="ov-url-text" style="color:var(--accent);font-size:11px;word-break:break-all;display:block;padding-right:80px"></span>
+      <span id="ov-copy-label" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);letter-spacing:.05em;white-space:nowrap">click to copy</span>
+    </div>
+    <div style="color:var(--muted);font-size:11px;margin-bottom:20px">OBS browser source: width <strong style="color:var(--text)">480</strong> · height <strong style="color:var(--text)">210</strong> · scale down to taste</div>
+
+    <div style="color:var(--muted);font-size:11px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px">target options explained</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--accent);white-space:nowrap">default</td>
+        <td style="padding:5px 8px;color:var(--muted)">most relevant goal based on your current rank</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--accent)">playoffs</td>
+        <td style="padding:5px 8px;color:var(--muted)">gap to top 12</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--accent)">lcq</td>
+        <td style="padding:5px 8px;color:var(--muted)">gap to top 100</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--accent)">seed 1–12</td>
+        <td style="padding:5px 8px;color:var(--muted)">gap to a specific playoffs seed</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;color:var(--accent)">lcqhs</td>
+        <td style="padding:5px 8px;color:var(--muted)">elo needed for your next LCQ headstart point</td>
+      </tr>
+    </table>
+  </div>
+</div>
   <span style="display:none">MCSR Ranked S10 · Phase 4 · Phase Points Leaderboard</span>
   <span>data: <a href="https://api.mcsrranked.com" target="_blank">api.mcsrranked.com</a></span>
 </footer>
@@ -2209,7 +2267,47 @@ document.getElementById('main-tbody').addEventListener('click', e => {
   if (uuid) openModal(uuid);
 });
 
-document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('overlay-btn').addEventListener('click', () => {
+  document.getElementById('overlay-modal-bg').style.display = 'flex';
+  updateOverlayUrl();
+});
+document.getElementById('overlay-modal-close').addEventListener('click', () => {
+  document.getElementById('overlay-modal-bg').style.display = 'none';
+});
+document.getElementById('overlay-modal-bg').addEventListener('click', e => {
+  if (e.target === document.getElementById('overlay-modal-bg'))
+    document.getElementById('overlay-modal-bg').style.display = 'none';
+});
+
+function updateOverlayUrl() {
+  const player = document.getElementById('ov-player-input').value.trim();
+  const target = document.getElementById('ov-target-select').value;
+  const seedNum = document.getElementById('ov-seed-input').value.trim();
+  const isSeed = target === 'seed';
+
+  document.getElementById('ov-seed-row').style.display = isSeed ? 'block' : 'none';
+
+  const targetVal = isSeed ? (seedNum ? `seed${seedNum}` : '') : target;
+  const base = 'https://olavmn4.github.io/PredPhasePtsLb/overlay.html';
+  const url  = player
+    ? `${base}?player=${encodeURIComponent(player)}${targetVal ? '&target=' + targetVal : ''}`
+    : `${base}?player=YourUsername${targetVal ? '&target=' + targetVal : ''}`;
+  document.getElementById('ov-url-text').textContent = url;
+}
+
+document.getElementById('ov-player-input').addEventListener('input', updateOverlayUrl);
+document.getElementById('ov-target-select').addEventListener('change', updateOverlayUrl);
+document.getElementById('ov-seed-input').addEventListener('input', updateOverlayUrl);
+
+document.getElementById('ov-url-box').addEventListener('click', () => {
+  const url   = document.getElementById('ov-url-text').textContent;
+  const label = document.getElementById('ov-copy-label');
+  navigator.clipboard.writeText(url).then(() => {
+    label.textContent = 'copied!';
+    label.style.color = 'var(--accent)';
+    setTimeout(() => { label.textContent = 'click to copy'; label.style.color = 'var(--muted)'; }, 2000);
+  });
+});
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 });
