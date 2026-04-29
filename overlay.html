@@ -8,22 +8,25 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
+    /* Increased background depth */
     --bg: #080909; 
-    --bg2: #0d0e0f; 
+    --bg2: #0a0b0c; 
     --border: #1e2022;
     --text: #d4d8dd; 
-    --muted: #626974; 
+    --muted: #525861; 
     --accent: #4ade80;
     --red: #f87171; 
     --amber: #fbbf24;
   }
   body { background: transparent; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text); line-height: 1; }
+  
+  /* Background opacity changed from 0.88 to 0.96 for a much more solid look */
   #overlay { 
-    background: rgba(8, 9, 9, 0.98); 
+    background: rgba(8, 9, 9, 0.96); 
     border: 1px solid var(--border); 
     display: none; 
     overflow: hidden; 
-    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Added shadow to make it pop against gameplay */
   }
   #overlay.loaded { display: block; }
 
@@ -31,53 +34,49 @@
     display: flex; 
     align-items: center; 
     justify-content: space-between; 
-    padding: 6px 12px; 
+    padding: 5px 12px; 
     border-bottom: 1px solid var(--border); 
-    background: #111213; 
+    background: var(--bg2); /* Solid sub-header */
   }
   .ov-avatar { width: 20px; height: 20px; image-rendering: pixelated; }
   .ov-countdown { font-size: 9px; color: var(--muted); letter-spacing: .04em; }
-  .ov-stats { 
-    display: grid; 
-    grid-template-columns: repeat(3, 1fr); 
-    border-bottom: 1px solid var(--border);
-    background: #080909; 
-  }
+
+  .ov-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border); }
   .ov-stat { padding: 8px 12px; border-right: 1px solid var(--border); }
   .ov-stat:last-child { border-right: none; }
-  .ov-stat-label { font-size: 8px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 3px; }
+  .ov-stat-label { font-size: 8px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 2px; }
   .ov-stat-value { font-size: 15px; font-weight: 600; color: var(--text); }
   .ov-stat-value.accent { color: var(--accent); }
 
-  .ov-qual { 
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between; 
-    padding: 8px 12px; 
-    gap: 12px; 
-    border-bottom: 1px solid var(--border);
-    background: #0d0e0f; 
-  }
+  .ov-qual { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; gap: 12px; border-bottom: 1px solid var(--border); }
   .ov-qual-label { font-size: 9px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; flex-shrink: 0; }
-  .qual-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 2px; font-size: 10px; font-weight: 600; white-space: nowrap; }
-  .qual-lcq  { background: rgba(251,191,36, 0.4); border: 1px solid #fbbf24; color: #fff; }
-  .qual-po   { background: rgba(96,165,250, 0.4); border: 1px solid #60a5fa; color: #fff; }
-  .qual-seed { background: rgba(74,222,128, 0.35); border: 1px solid #4ade80; color: #fff; }
+  .qual-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 0; font-size: 10px; font-weight: 500; white-space: nowrap; }
+  
+  /* Increased pill background opacity for better legibility */
+  .qual-lcq  { background: rgba(251,191,36,.15);  border: 1px solid rgba(251,191,36,.4);  color: #fbbf24; }
+  .qual-po   { background: rgba(96,165,250,.15);  border: 1px solid rgba(96,165,250,.4);  color: #60a5fa; }
+  .qual-seed { background: rgba(74,222,128,.12);  border: 1px solid rgba(74,222,128,.3); color: rgba(74,222,128,1); }
 
   .error { padding: 12px; font-size: 11px; color: var(--red); }
 
   @keyframes borderFlash {
     0%   { box-shadow: 0 0 0 0px var(--flash-color); border-color: var(--flash-color); }
-    30%  { box-shadow: 0 0 25px 5px var(--flash-color); border-color: var(--flash-color); }
+    30%  { box-shadow: 0 0 18px 4px var(--flash-color); border-color: var(--flash-color); }
     100% { box-shadow: 0 0 0 0px transparent; border-color: var(--border); }
   }
   @keyframes pillPop {
     0%   { transform: scale(1); }
-    25%  { transform: scale(1.15); filter: brightness(1.8); }
+    25%  { transform: scale(1.12); filter: brightness(1.6); }
+    60%  { transform: scale(1.05); filter: brightness(1.3); }
     100% { transform: scale(1); filter: brightness(1); }
   }
-  .threshold-flash { animation: borderFlash 1.8s ease-out forwards; }
-  .pill-pop .qual-pill { animation: pillPop 1.2s cubic-bezier(.36,.07,.19,.97) forwards; }
+  .threshold-flash {
+    animation: borderFlash 1.8s ease-out forwards;
+  }
+  .pill-pop .qual-pill {
+    animation: pillPop 1.2s cubic-bezier(.36,.07,.19,.97) forwards;
+    display: inline-block;
+  }
 </style>
 </head>
 <body>
