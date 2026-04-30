@@ -879,7 +879,7 @@ async function fetchAll(spin=true) {
   if (spin) btn.classList.add('spinning');
   try {
     const [pr, er] = await Promise.all([
-      fetch('https://api.mcsrranked.com/phase-leaderboard?predicted=true'),
+      fetch('https://api.mcsrranked.com/phase-leaderboard?season=10'),
       fetch('https://api.mcsrranked.com/leaderboard'),
     ]);
     const pj = await pr.json();
