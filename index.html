@@ -875,7 +875,6 @@ function fmtAgo(unixSec) {
 }
 
 async function fetchAll(spin=true) {
-  if (SEASON_ENDED) return; // frozen — no more fetches
   const btn = document.getElementById('btn-refresh');
   if (spin) btn.classList.add('spinning');
   try {
@@ -1301,12 +1300,9 @@ document.getElementById('main-search').addEventListener('input', e => {
   renderTable();
 });
 
-document.getElementById('btn-refresh').addEventListener('click', () => { if (!SEASON_ENDED) fetchAll(true); });
-const SEASON_ENDED = Math.floor(Date.now() / 1000) > 1777507200;
+document.getElementById('btn-refresh').addEventListener('click', () => fetchAll(true));
 
-document.getElementById('btn-refresh').addEventListener('click', () => { if (!SEASON_ENDED) fetchAll(true); });
-
-if (!SEASON_ENDED) setInterval(() => fetchAll(false), 60_000);
+setInterval(() => fetchAll(false), 60_000);
 
 setInterval(() => {
   if (phaseEndsAt)
@@ -2652,13 +2648,6 @@ document.getElementById('hist-top100-btn').addEventListener('click', () => {
   window.addEventListener('resize', syncTopBar);
 })();
 
-if (SEASON_ENDED) {
-  document.getElementById('phase-countdown').innerHTML = '<strong style="color:var(--red)">season ended</strong>';
-  const banner = document.createElement('div');
-  banner.style.cssText = "background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.2);color:#f87171;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 14px;margin-bottom:12px;text-align:center;letter-spacing:.04em";
-  banner.textContent = 'season 10 has ended — standings are final';
-  document.querySelector('main').prepend(banner);
-}
 fetchAll(true);
 </script>
 </body>
